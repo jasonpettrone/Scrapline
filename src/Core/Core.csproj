@@ -1,0 +1,11 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <TargetFramework>net8.0</TargetFramework>
+    <RootNamespace>Scrapline.Core</RootNamespace>
+    <AssemblyName>Scrapline.Core</AssemblyName>
+    <!-- This project must NEVER reference Godot. The Core is engine-independent
+         so its logic is xUnit-testable with no editor install (docs/02, docs/04). -->
+  </PropertyGroup>
+
+</Project>

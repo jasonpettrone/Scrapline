@@ -1,0 +1,42 @@
+name: Engine smoke test
+
+# The slower loop: boot the real Godot project headlessly and prove the
+# Godot <-> Core seam is intact. Runs on PRs and pushes to master (docs/04).
+on:
+  push:
+    branches: [ master ]
+  pull_request:
+    branches: [ master ]
+
+jobs:
+  smoke:
+    name: Headless Godot smoke run
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up .NET 8
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: 8.0.x
+
+      # Pinned to match the local editor (Godot 4.7 .NET). Bump both together.
+      - name: Set up Godot 4.7 (.NET)
+        uses: chickensoft-games/setup-godot@v2
+        with:
+          version: 4.7.0
+          use-dotnet: true
+
+      - name: Import project (generates .godot)
+        run: godot --headless --path game --import
+
+      - name: Build C# solution
+        run: godot --headless --path game --build-solutions --quit
+
+      - name: Headless smoke run
+        run: |
+          set -o pipefail
+          OUTPUT=$(godot --headless --path game --quit-after 120 2>&1)
+          echo "$OUTPUT"
+          echo "$OUTPUT" | grep -q "Scrapline Core online." \
+            || { echo "::error::Core greeting not found — the Godot<->Core seam is broken"; exit 1; }

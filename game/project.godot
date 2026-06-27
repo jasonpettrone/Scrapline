@@ -1,0 +1,14 @@
+; Engine configuration file.
+; Generated/maintained by hand for the M0 skeleton; Godot will rewrite on save.
+
+config_version=5
+
+[application]
+
+config/name="Scrapline"
+run/main_scene="res://scenes/Main.tscn"
+config/features=PackedStringArray("4.7", "C#", "Forward Plus")
+
+[dotnet]
+
+project/assembly_name="Game"

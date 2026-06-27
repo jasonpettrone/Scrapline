@@ -1,0 +1,16 @@
+<Project Sdk="Godot.NET.Sdk/4.7.0">
+
+  <PropertyGroup>
+    <TargetFramework>net8.0</TargetFramework>
+    <EnableDynamicLoading>true</EnableDynamicLoading>
+    <RootNamespace>Scrapline.Game</RootNamespace>
+    <!-- Godot's generated source can trip strict analyzers; keep this layer lenient. -->
+    <TreatWarningsAsErrors>false</TreatWarningsAsErrors>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <!-- The one allowed dependency direction: Game -> Core, never the reverse. -->
+    <ProjectReference Include="..\src\Core\Core.csproj" />
+  </ItemGroup>
+
+</Project>

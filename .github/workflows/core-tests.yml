@@ -1,0 +1,27 @@
+name: Core tests
+
+# The fast feedback loop: pure-C# Core unit tests. No Godot required, so this
+# runs in seconds on every push and every PR (docs/04).
+on:
+  push:
+  pull_request:
+
+jobs:
+  test:
+    name: dotnet test (Core)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up .NET 8
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: 8.0.x
+
+      # Restore/test the test project only — this never pulls in the Godot SDK,
+      # which is what keeps this job fast and engine-free.
+      - name: Restore
+        run: dotnet restore tests/Core.Tests/Core.Tests.csproj
+
+      - name: Test
+        run: dotnet test tests/Core.Tests/Core.Tests.csproj -c Release --no-restore
