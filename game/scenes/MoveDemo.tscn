@@ -1,0 +1,16 @@
+[gd_scene load_steps=2 format=3]
+
+[ext_resource type="Script" path="res://scripts/demo/Player.cs" id="1_player"]
+
+[node name="MoveDemo" type="Node2D"]
+
+[node name="Player" type="Polygon2D" parent="."]
+position = Vector2(576, 324)
+color = Color(0.3, 0.7, 1, 1)
+polygon = PackedVector2Array(-25, -25, 25, -25, 25, 25, -25, 25)
+script = ExtResource("1_player")
+
+[node name="Hint" type="Label" parent="."]
+offset_left = 20.0
+offset_top = 20.0
+text = "WASD to move the rectangle"
