@@ -5,7 +5,7 @@
 [sub_resource type="RectangleShape2D" id="CarShape"]
 size = Vector2(60, 30)
 
-[node name="Car" type="CharacterBody2D"]
+[node name="Car" type="RigidBody2D"]
 script = ExtResource("1_car")
 
 [node name="Body" type="Polygon2D" parent="."]

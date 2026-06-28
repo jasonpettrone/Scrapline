@@ -28,6 +28,9 @@ public sealed record CarStats
     /// <summary>Reverse top speed as a fraction of <see cref="MaxSpeed"/> (0–1).</summary>
     public float ReverseSpeedFactor { get; init; } = 0.45f;
 
+    /// <summary>Vehicle mass (Godot units). Heavier cars win symmetric rams and resist knockback.</summary>
+    public float Mass { get; init; } = 1.0f;
+
     /// <summary>The grey-box default used for M0 prototyping.</summary>
     public static CarStats Default => new();
 
@@ -41,5 +44,6 @@ public sealed record CarStats
         Friction > 0f &&
         BrakingForce > 0f &&
         TurnSpeed > 0f &&
+        Mass > 0f &&
         ReverseSpeedFactor is > 0f and <= 1f;
 }

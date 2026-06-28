@@ -38,4 +38,10 @@ public class CarStatsTests
     {
         Assert.False((CarStats.Default with { ReverseSpeedFactor = factor }).IsWellFormed);
     }
+
+    [Fact]
+    public void Non_positive_mass_is_not_well_formed()
+    {
+        Assert.False((CarStats.Default with { Mass = 0f }).IsWellFormed);
+    }
 }

@@ -5,12 +5,14 @@ using Scrapline.Core.Util;
 namespace Scrapline.Game.Race;
 
 /// <summary>
-/// Top-down arcade car. Controller-first: left stick steers, right trigger is gas,
-/// left trigger is brake/reverse — all analog. Keyboard (WASD) still works as a
-/// digital fallback. The tunable numbers come from <see cref="CarStats"/> in Core;
-/// this script just turns input + stats into motion via the physics engine.
+/// Top-down arcade car on a <see cref="RigidBody2D"/>, so collisions impart real
+/// momentum — the physical foundation takedowns need. Controller-first: left stick
+/// steers, right trigger is gas, left trigger is brake/reverse (all analog); WASD is a
+/// digital fallback. Tunable numbers come from <see cref="CarStats"/> in Core.
+///
+/// This is *functional* M0 handling. The real feel pass — drift, boost, grip/slip — is M1.
 /// </summary>
-public partial class CarController : CharacterBody2D
+public partial class CarController : RigidBody2D
 {
     private const float StickDeadzone = 0.2f;    // ignore thumbstick drift
     private const float TriggerDeadzone = 0.05f; // ignore resting-trigger noise
@@ -20,30 +22,34 @@ public partial class CarController : CharacterBody2D
     /// <summary>Injected by the RaceScene from the RaceConfig before the car drives.</summary>
     public void Configure(CarStats stats) => _stats = stats;
 
+    public override void _Ready()
+    {
+        GravityScale = 0f;                                  // top-down: no gravity
+        Mass = _stats.Mass;
+        LinearDamp = _stats.Acceleration / _stats.MaxSpeed; // terminal speed settles near MaxSpeed
+        AngularDamp = 8f;
+    }
+
     public override void _PhysicsProcess(double delta)
     {
-        float dt = (float)delta;
         (float throttle, float brake, float steer) = ReadControls();
 
-        // Signed speed along the way we're currently pointing.
         Vector2 forward = Vector2.Right.Rotated(Rotation);
-        float speed = Velocity.Dot(forward);
+        float forwardSpeed = LinearVelocity.Dot(forward);
 
-        // Gas accelerates forward; brake decelerates then reverses; both scale with
-        // how hard the trigger is pulled. If both are released, friction bleeds speed off.
+        // Engine + brake as mass-scaled forces: acceleration stays consistent across cars,
+        // but heavier cars carry more momentum into collisions. LinearDamp caps top speed.
         if (throttle > 0f)
-            speed = Mathf.MoveToward(speed, _stats.MaxSpeed, _stats.Acceleration * throttle * dt);
-        if (brake > 0f)
-            speed = Mathf.MoveToward(speed, -_stats.MaxSpeed * _stats.ReverseSpeedFactor, _stats.BrakingForce * brake * dt);
-        if (throttle <= 0f && brake <= 0f)
-            speed = Mathf.MoveToward(speed, 0f, _stats.Friction * dt);
+            ApplyCentralForce(forward * _stats.Acceleration * _stats.Mass * throttle);
 
-        // Steering scales with signed speed: no turning when stopped, reversed when backing up.
-        float steerScale = Mathf.Clamp(speed / _stats.MaxSpeed, -1f, 1f);
-        Rotation += steer * _stats.TurnSpeed * steerScale * dt;
+        if (brake > 0f && forwardSpeed > -_stats.MaxSpeed * _stats.ReverseSpeedFactor)
+            ApplyCentralForce(-forward * _stats.BrakingForce * _stats.Mass * brake);
 
-        Velocity = Vector2.Right.Rotated(Rotation) * speed;
-        MoveAndSlide();
+        // Steering: angular velocity scales with signed speed (no turn when stopped, inverted
+        // in reverse). Set directly for predictable arcade control; collisions still impart
+        // linear knockback because we never override LinearVelocity.
+        float steerScale = Mathf.Clamp(forwardSpeed / _stats.MaxSpeed, -1f, 1f);
+        AngularVelocity = steer * _stats.TurnSpeed * steerScale;
     }
 
     /// <summary>Returns (throttle 0..1, brake 0..1, steer -1..1) from pad + keyboard.</summary>
