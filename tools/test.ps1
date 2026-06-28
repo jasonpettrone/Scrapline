@@ -83,6 +83,9 @@ Write-Host $output
 if ($output -notmatch 'Race ready') {
     Fail "Engine smoke failed: race scene did not boot (the Godot<->Core seam is broken)."
 }
+if ($output -notmatch 'Race result') {
+    Fail "Engine smoke failed: no RaceResult emitted on exit (seam round-trip broken)."
+}
 
 # ---- 3. Integration tests (GdUnit4, in-engine) --------------------------
 Write-Step "Integration tests (GdUnit4, in-engine)"

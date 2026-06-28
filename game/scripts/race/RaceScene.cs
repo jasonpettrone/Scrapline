@@ -46,6 +46,23 @@ public partial class RaceScene : Node2D
             _camera.GlobalPosition = _car.GlobalPosition; // upright follow (camera doesn't rotate with the car)
     }
 
+    public override void _ExitTree()
+    {
+        // M0 has no real race-end logic yet, so "race over" = the scene exiting. We still
+        // produce a RaceResult to close the Core->Engine->Core loop: the engine builds the
+        // Core seam contract and hands it back. M2's GameDirector will consume this for real.
+        RaceResult result = BuildResult();
+        GD.Print($"Race result: placement={result.Placement} hp={result.HpRemaining} outcome={result.Outcome}");
+    }
+
+    /// <summary>Placeholder result for M0 (no laps/HP yet) — proves the seam, not the rules.</summary>
+    private static RaceResult BuildResult() => new()
+    {
+        Placement = 1,
+        HpRemaining = 100,
+        Outcome = RaceOutcome.Won,
+    };
+
     private void BuildArena()
     {
         // Floor (drawn first so everything sits on top of it).

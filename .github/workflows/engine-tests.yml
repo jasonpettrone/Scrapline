@@ -38,6 +38,8 @@ jobs:
           echo "$OUTPUT"
           echo "$OUTPUT" | grep -q "Race ready" \
             || { echo "::error::Race scene did not boot — the Godot<->Core seam is broken"; exit 1; }
+          echo "$OUTPUT" | grep -q "Race result" \
+            || { echo "::error::No RaceResult emitted on exit — seam round-trip broken"; exit 1; }
 
       - name: Integration tests (GdUnit4, in-engine)
         run: |
