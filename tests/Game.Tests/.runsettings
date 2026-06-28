@@ -10,7 +10,8 @@
   <!-- GODOT_BIN is supplied by the environment (local gate + CI), not hardcoded here,
        so this stays cross-platform. -->
   <GdUnit4>
-    <Parameters></Parameters>
+    <!-- Run the GdUnit4-hosted Godot headless so it needs no display on Linux CI. -->
+    <Parameters>--headless</Parameters>
     <DisplayName>FullyQualifiedName</DisplayName>
   </GdUnit4>
 </RunSettings>
