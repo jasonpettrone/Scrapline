@@ -3,8 +3,8 @@
 A top-down 2D roguelite space-racing game with Burnout-style takedowns and a heavily
 physics-driven sandbox, wrapped in a Slay the Spire / Hades run structure.
 
-> **Status:** Pre-production. This repo currently contains the *definitive plan only* — no
-> game code yet. Implementation begins after the plan in [`/docs`](docs) is reviewed and approved.
+> **Status:** M0 (foundations). The plan in [`/docs`](docs) is locked and the repo skeleton is
+> live: a pure-C# Core with xUnit tests, a minimal Godot 4.7 (.NET) project, and green CI.
 
 ## The 30-second pitch
 
@@ -26,6 +26,23 @@ carry toward the act boss. Win a race, draft an **upgrade**. Your **car choice**
 | Integration tests  | **GdUnit4** in-engine (physics, AI, scene wiring)                   |
 | Steam              | Steamworks via GodotSteam / Facepunch.Steamworks (M7)               |
 | CI                 | GitHub Actions (`dotnet test` + headless Godot test run)            |
+
+## Running tests locally
+
+Run the **same checks CI runs**, before you push — a green local run means green CI:
+
+```powershell
+./tools/test.ps1          # full gate: Core unit tests + headless Godot smoke test
+./tools/test.ps1 -Core    # fast loop: Core unit tests only (no engine)
+```
+
+`tools/test.ps1` mirrors [`.github/workflows/`](.github/workflows) exactly. The raw commands,
+if you want them directly:
+
+```powershell
+dotnet test tests/Core.Tests     # Core unit tests
+godot --path game                # open the game in the editor (F6 runs the current scene)
+```
 
 ## The plan (read in order)
 
