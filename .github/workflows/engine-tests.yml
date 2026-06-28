@@ -1,12 +1,10 @@
 name: Engine smoke test
 
-# The slower loop: boot the real Godot project headlessly and prove the
-# Godot <-> Core seam is intact. Runs on PRs and pushes to master (docs/04).
+# The slower loop: boot the real Godot project headlessly, prove the Godot <-> Core
+# seam is intact, and run the GdUnit4 in-engine tests. Runs on every push and PR (docs/04).
 on:
   push:
-    branches: [ master ]
   pull_request:
-    branches: [ master ]
 
 jobs:
   smoke:
@@ -38,5 +36,13 @@ jobs:
           set -o pipefail
           OUTPUT=$(godot --headless --path game --quit-after 120 2>&1)
           echo "$OUTPUT"
-          echo "$OUTPUT" | grep -q "Scrapline Core online." \
-            || { echo "::error::Core greeting not found — the Godot<->Core seam is broken"; exit 1; }
+          echo "$OUTPUT" | grep -q "Race ready" \
+            || { echo "::error::Race scene did not boot — the Godot<->Core seam is broken"; exit 1; }
+          echo "$OUTPUT" | grep -q "Race result" \
+            || { echo "::error::No RaceResult emitted on exit — seam round-trip broken"; exit 1; }
+
+      - name: Integration tests (GdUnit4, in-engine)
+        run: |
+          export GODOT_BIN="$(which godot)"
+          godot --headless --path tests/Game.Tests --import
+          dotnet test tests/Game.Tests/Game.Tests.csproj --settings tests/Game.Tests/.runsettings

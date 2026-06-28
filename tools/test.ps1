@@ -4,14 +4,15 @@
     Runs the exact same checks CI runs, locally. Use this before every push.
 
 .DESCRIPTION
-    Mirrors the two GitHub Actions workflows so a green local run means a green CI:
-      1. Core tests   -> dotnet test            (fast, no engine)   [core-tests.yml]
-      2. Engine smoke -> headless Godot boot + Core-seam check       [engine-tests.yml]
+    Mirrors the GitHub Actions workflows so a green local run means a green CI:
+      1. Core tests   -> dotnet test                       (fast, no engine)  [core-tests.yml]
+      2. Engine smoke -> headless Godot boot + Core-seam check                 [engine-tests.yml]
+      3. Integration  -> GdUnit4 in-engine tests (dotnet test + Godot runtime) [engine-tests.yml]
 
     Exits non-zero if anything fails, so it works as a gate (e.g. in a git hook).
 
 .PARAMETER Core
-    Run only the fast Core unit tests; skip the slower engine smoke test.
+    Run only the fast Core unit tests; skip the engine smoke + GdUnit4 integration tests.
     This is the tight inner loop you run constantly while writing Core logic.
 
 .EXAMPLE
@@ -54,6 +55,19 @@ if (-not $godot) {
 }
 Write-Host "Using: $godot"
 
+# GdUnit4 needs the Godot *binary* path in GODOT_BIN (not the .cmd shim).
+$godotBin = $env:GODOT_BIN
+if (-not $godotBin) {
+    $src = (Get-Command $godot -ErrorAction SilentlyContinue).Source
+    if (-not $src) { $src = $godot }
+    if ($src -like '*.cmd') {
+        $line = Get-Content $src | Where-Object { $_ -match '"[^"]+\.exe"' } | Select-Object -First 1
+        if ($line -match '"([^"]+\.exe)"') { $godotBin = $Matches[1] }
+    } else {
+        $godotBin = $src
+    }
+}
+
 $game = "$repo/game"
 
 Write-Step "Import project (headless)"
@@ -66,8 +80,20 @@ if ($LASTEXITCODE -ne 0) { Fail "Godot C# build failed." }
 Write-Step "Smoke run (boot main scene, verify Core seam)"
 $output = & $godot --headless --path $game --quit-after 120 | Out-String
 Write-Host $output
-if ($output -match 'Scrapline Core online\.') {
-    Write-Host "`nOK  All checks passed - safe to push." -ForegroundColor Green
-    exit 0
+if ($output -notmatch 'Race ready') {
+    Fail "Engine smoke failed: race scene did not boot (the Godot<->Core seam is broken)."
 }
-Fail "Engine smoke failed: Core greeting not found (the Godot<->Core seam is broken)."
+if ($output -notmatch 'Race result') {
+    Fail "Engine smoke failed: no RaceResult emitted on exit (seam round-trip broken)."
+}
+
+# ---- 3. Integration tests (GdUnit4, in-engine) --------------------------
+Write-Step "Integration tests (GdUnit4, in-engine)"
+if (-not $godotBin) { Fail "Could not resolve GODOT_BIN for GdUnit4." }
+$env:GODOT_BIN = $godotBin
+& $godot --headless --path "$repo/tests/Game.Tests" --import | Out-Null
+dotnet test "$repo/tests/Game.Tests/Game.Tests.csproj" --settings "$repo/tests/Game.Tests/.runsettings" --nologo
+if ($LASTEXITCODE -ne 0) { Fail "Integration tests (GdUnit4) failed." }
+
+Write-Host "`nOK  All checks passed - safe to push." -ForegroundColor Green
+exit 0
