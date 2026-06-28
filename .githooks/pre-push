@@ -1,0 +1,26 @@
+#!/bin/sh
+#
+# Pre-push gate: run the full local test suite (mirrors CI) and block the push
+# if anything fails. This is the safety net that keeps `master` green.
+#
+# Source of truth is tools/test.ps1 — this hook just invokes it.
+# To bypass in an emergency: git push --no-verify
+# To run only the fast Core tests instead, change -File line to add: -Core
+
+# Run from the repo root regardless of where git invoked us.
+cd "$(git rev-parse --show-toplevel)" || exit 1
+
+echo "pre-push: running full local test gate (tools/test.ps1)..."
+
+powershell.exe -NoProfile -ExecutionPolicy Bypass -File "tools/test.ps1"
+status=$?
+
+if [ "$status" -ne 0 ]; then
+  echo ""
+  echo "pre-push: tests FAILED (exit $status) — push aborted."
+  echo "          fix the failures, or bypass with: git push --no-verify"
+  exit 1
+fi
+
+echo "pre-push: all checks passed — pushing."
+exit 0
