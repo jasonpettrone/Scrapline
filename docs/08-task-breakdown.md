@@ -46,10 +46,16 @@ Prove the full Core→Engine→Core loop.
 
 ### 1. Driving feel
 Weighty momentum, drift, and boost — the moment-to-moment of driving.
-- **Drift:** hold a **dedicated drift button** to drift while steering.
-- **Mini-turbo:** **three** charge tiers; release for a boost scaled to the tier reached.
-- **Boost source (M1):** **drifting only** (takedown-boost arrives later with the Juggernaut).
+- **Drift:** hold a **dedicated drift button** to drift while steering — a **cornering &
+  positioning tool** (loosens grip + adds turn authority). It does **not** generate boost.
+- **Boost sources (M1):** a slow **passive trickle** (fills to full over time) plus on-track
+  **pads** — **small** (partial refill) and **large** (fill to full), both respawning on a
+  cooldown, and **launch pads** for an instant off-meter speed kick. *(Takedown-boost arrives
+  later with the Juggernaut; weapon-hit boost with Ordnance.)*
 - **Boost use:** **hold to drain** the meter continuously until released or empty.
+- **Why not drift-boost:** a drift-charged meter is exploitable (wiggle to farm lateral speed →
+  net free speed). Pickup pads make boost a **routing** decision instead — exploit-free and a
+  better fit for the racing line.
 
 ### 2. Damage & HP
 Each car has an HP pool; rams and slams chip it.

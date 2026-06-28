@@ -24,14 +24,17 @@ public partial class RaceScene : Node2D
     private const float WallThickness = 40f;
 
     private RaceConfig _config = RaceConfig.Default;
-    private Node2D? _car;
+    private CarController? _car;
     private Camera2D? _camera;
+    private Label? _debugReadout;
 
     public override void _Ready()
     {
         BuildArena();
+        SpawnBoostPads();
         SpawnCar(_config.PlayerCar);
         SetUpCamera();
+        SetUpDebugReadout();
 
         // Proves the seam on boot (and is what the headless smoke test asserts).
         GD.Print($"Race ready on '{_config.TrackId}' — car max speed {_config.PlayerCar.MaxSpeed} px/s.");
@@ -44,6 +47,8 @@ public partial class RaceScene : Node2D
 
         if (_camera is not null && _car is not null)
             _camera.GlobalPosition = _car.GlobalPosition; // upright follow (camera doesn't rotate with the car)
+
+        UpdateDebugReadout();
     }
 
     public override void _ExitTree()
@@ -114,6 +119,34 @@ public partial class RaceScene : Node2D
         });
     }
 
+    /// <summary>
+    /// Hardcoded M1 pad layout around the loop (the ring between the outer walls and the centre
+    /// block): launch + small pads on the straights, a large pad on the far side as a reward for
+    /// committing to the top route. Seeded placement from RaceConfig comes later (docs/02).
+    /// </summary>
+    private void SpawnBoostPads()
+    {
+        // Launch pad on the bottom straight, flinging you along the direction of travel (+X).
+        AddPad(BoostPad.PadKind.Launch, new Vector2(700f, ArenaHeight - 150f), rotation: 0f);
+
+        // Small meter pads tucked into the side corridors.
+        AddPad(BoostPad.PadKind.Small, new Vector2(ArenaWidth - 250f, ArenaHeight / 2f));
+        AddPad(BoostPad.PadKind.Small, new Vector2(250f, ArenaHeight / 2f));
+
+        // Large (fill-to-full) pad on the top straight — the high-value pickup.
+        AddPad(BoostPad.PadKind.Large, new Vector2(ArenaWidth / 2f, 200f));
+    }
+
+    private void AddPad(BoostPad.PadKind kind, Vector2 position, float rotation = 0f)
+    {
+        AddChild(new BoostPad
+        {
+            Kind = kind,
+            Position = position,
+            Rotation = rotation,
+        });
+    }
+
     private void SpawnCar(CarStats stats)
     {
         var car = CarScene.Instantiate<CarController>();
@@ -129,5 +162,35 @@ public partial class RaceScene : Node2D
         _camera = new Camera2D { Zoom = new Vector2(0.7f, 0.7f) };
         AddChild(_camera);
         _camera.MakeCurrent();
+    }
+
+    /// <summary>
+    /// A throwaway on-screen readout of the drift→boost loop (boost %, mini-turbo tier, drift/
+    /// boost state). This is a playtest aid, NOT the real HUD (which comes later): you can't
+    /// honestly judge whether the drift→boost feel is fun without seeing the meter fill and drain.
+    /// </summary>
+    private void SetUpDebugReadout()
+    {
+        var layer = new CanvasLayer();
+        AddChild(layer);
+
+        _debugReadout = new Label
+        {
+            Position = new Vector2(16, 16),
+            Theme = null,
+        };
+        _debugReadout.AddThemeFontSizeOverride("font_size", 22);
+        layer.AddChild(_debugReadout);
+    }
+
+    private void UpdateDebugReadout()
+    {
+        if (_debugReadout is null || _car is null)
+            return;
+
+        int pct = Mathf.RoundToInt(_car.BoostFraction * 100f);
+        string drift = _car.IsDrifting ? "DRIFT" : "—";
+        string boost = _car.IsLaunching ? "LAUNCH" : _car.IsBoosting ? "BOOST" : "—";
+        _debugReadout.Text = $"Boost {pct,3}%   {drift}   {boost}";
     }
 }

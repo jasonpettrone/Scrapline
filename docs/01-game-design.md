@@ -73,13 +73,17 @@ mods) is passive. No per-car active abilities.
 
 **Driving & boost**
 - **Weighty momentum handling with drift.** Mass matters for cornering and takedowns.
-- **Mini-turbo drift:** hold a drift through a corner to charge a tiered turbo, release for a
-  boost burst. The core skill mechanic and a universal way to earn boost.
+- **Drift** (hold a dedicated button): loosens grip and adds turn authority for a controllable
+  slide — a **cornering & positioning tool** for tight lines and lining up rams. Drift does
+  **not** generate boost (a drift-charged meter proved exploitable — wiggle-farming).
 - **Boost** is a single free-spend meter. It fills from **multiple sources weighted by your
-  car/build** — drifting (all cars), takedowns (Juggernaut leans here), passive trickle
-  (Comet), etc.
-- **Boost pads** come in two kinds: some **refill boost meter**, some give an **instant speed
-  kick**. Nailing the racing line through them is rewarded.
+  car/build**: a slow **passive trickle** (all cars; Comet leans hard on this), plus
+  **pickup pads** on the track, and later **takedowns** (Juggernaut leans here) and
+  **weapon hits** (Ordnance). One meter, many faucets.
+- **Boost pads** are the primary on-track fuel and come in **three kinds** (Rocket-League-style
+  routing): **small pads** refill a chunk of meter, **large pads** fill it to full (both
+  respawn on a cooldown), and **launch pads** give an **instant speed kick** independent of the
+  meter. Nailing the racing line through them is the skill expression.
 
 **Takedowns (the core verb)**
 - Three damage vectors: **ram-to-chip-HP**, **environmental slams** (into walls, explosive
@@ -131,10 +135,10 @@ active abilities — identity is passive + how the pool steers your build.
 
 | Car | Role | Signature passive (starting Mod) | Boost lean | Pool bias |
 |-----|------|----------------------------------|-----------|-----------|
-| **Vanguard** | All-rounder / learning car | **Heals HP after every race** + strong balanced stats (partly opts out of the scarce-repair pressure) | Drift | Even, flexible |
+| **Vanguard** | All-rounder / learning car | **Heals HP after every race** + strong balanced stats (partly opts out of the scarce-repair pressure) | Balanced (trickle + pads) | Even, flexible |
 | **Juggernaut** | Takedown bruiser | **Wrecking Momentum** — takedowns refill boost and stack a temporary ram-damage bonus (self-sustaining takedown engine) | Takedowns | Mass, ram, armor, takedown-trigger mods |
-| **Comet** | Speed / evasion | **Passive boost generation** — always fueled, can lean on speed/boost constantly | Passive trickle | Handling, top speed, drift/boost synergies |
-| **Ordnance** | Weapons platform | **Overcharge Array** — landing weapon hits shaves all weapon cooldowns (weapon engine) | Weapon hits / drift | Extra weapon slots, ammo/cooldown, targeting |
+| **Comet** | Speed / evasion | **Passive boost generation** — a fat passive trickle keeps it always fueled, leaning on speed/boost constantly | Passive trickle | Handling, top speed, boost-efficiency synergies |
+| **Ordnance** | Weapons platform | **Overcharge Array** — landing weapon hits shaves all weapon cooldowns (weapon engine) | Weapon hits | Extra weapon slots, ammo/cooldown, targeting |
 
 Each car has its **own unlockable pool** of parts/mods/weapons plus access to the **shared
 neutral pool**.
