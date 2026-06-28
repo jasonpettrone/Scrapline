@@ -10,6 +10,9 @@ export_presets.cfg
 data_*/
 mono_crash.*.json
 
+# GdUnit4 test adapter generates its runtime runner scene on each `dotnet test`
+gdunit4_testadapter_v5/
+
 # ---- .NET / C# ----
 bin/
 obj/

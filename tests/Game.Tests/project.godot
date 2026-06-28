@@ -1,0 +1,14 @@
+; Minimal Godot project so GdUnit4 can boot a runtime to host the in-engine tests.
+; Tests here exercise the game *assembly* (CarController, etc.) under a real Godot
+; runtime; they don't load game res:// scenes (those tests run in the game project).
+
+config_version=5
+
+[application]
+
+config/name="Scrapline Game Tests"
+config/features=PackedStringArray("4.7", "C#")
+
+[dotnet]
+
+project/assembly_name="Game.Tests"

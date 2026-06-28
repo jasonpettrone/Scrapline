@@ -1,0 +1,16 @@
+<?xml version="1.0" encoding="utf-8"?>
+<RunSettings>
+  <RunConfiguration>
+    <MaxCpuCount>1</MaxCpuCount>
+    <TargetFrameworks>net8.0</TargetFrameworks>
+    <TestSessionTimeout>180000</TestSessionTimeout>
+    <TreatNoTestsAsError>true</TreatNoTestsAsError>
+  </RunConfiguration>
+
+  <!-- GODOT_BIN is supplied by the environment (local gate + CI), not hardcoded here,
+       so this stays cross-platform. -->
+  <GdUnit4>
+    <Parameters></Parameters>
+    <DisplayName>FullyQualifiedName</DisplayName>
+  </GdUnit4>
+</RunSettings>
