@@ -36,6 +36,15 @@ Run the **same checks CI runs**, before you push — a green local run means gre
 ./tools/test.ps1 -Core    # fast loop: Core unit tests only (no engine)
 ```
 
+A **pre-push hook** runs this gate automatically and blocks a push if it fails. Enable it once
+per clone:
+
+```powershell
+git config core.hooksPath .githooks
+```
+
+(Bypass in an emergency with `git push --no-verify`.)
+
 `tools/test.ps1` mirrors [`.github/workflows/`](.github/workflows) exactly. The raw commands,
 if you want them directly:
 
