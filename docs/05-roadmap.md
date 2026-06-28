@@ -4,6 +4,9 @@ Sequencing for a **solo, focused-commercial** build (~12–18 months). The spine
 is **vertical-slice-first**: prove the game is fun on the smallest possible slice before
 building breadth, and hit a Steam-page/wishlist milestone early.
 
+> **Feature-level breakdown:** see [`08-task-breakdown.md`](08-task-breakdown.md) for the
+> per-milestone feature list and the locked design decisions that spec the build.
+
 ## Milestone overview
 
 | #   | Milestone                     | Proves / delivers                                   | Exit criteria |
