@@ -38,5 +38,5 @@ jobs:
           set -o pipefail
           OUTPUT=$(godot --headless --path game --quit-after 120 2>&1)
           echo "$OUTPUT"
-          echo "$OUTPUT" | grep -q "Scrapline Core online." \
-            || { echo "::error::Core greeting not found — the Godot<->Core seam is broken"; exit 1; }
+          echo "$OUTPUT" | grep -q "Race ready" \
+            || { echo "::error::Race scene did not boot — the Godot<->Core seam is broken"; exit 1; }

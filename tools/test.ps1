@@ -66,8 +66,8 @@ if ($LASTEXITCODE -ne 0) { Fail "Godot C# build failed." }
 Write-Step "Smoke run (boot main scene, verify Core seam)"
 $output = & $godot --headless --path $game --quit-after 120 | Out-String
 Write-Host $output
-if ($output -match 'Scrapline Core online\.') {
+if ($output -match 'Race ready') {
     Write-Host "`nOK  All checks passed - safe to push." -ForegroundColor Green
     exit 0
 }
-Fail "Engine smoke failed: Core greeting not found (the Godot<->Core seam is broken)."
+Fail "Engine smoke failed: race scene did not boot (the Godot<->Core seam is broken)."
