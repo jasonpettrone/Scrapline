@@ -1,5 +1,10 @@
 ; Engine configuration file.
-; Generated/maintained by hand for the M0 skeleton; Godot will rewrite on save.
+; It's best edited using the editor UI and not directly,
+; since the parameters that go here are not all obvious.
+;
+; Format:
+;   [section] ; section goes between []
+;   param=value ; assign values to parameters
 
 config_version=5
 
