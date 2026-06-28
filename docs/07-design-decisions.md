@@ -31,6 +31,30 @@ Format: **Decision** — short rationale/notes. Items marked ⚖️ are flagged 
 - **Input:** **pure physics positioning** — no takedown button.
 - **Aftertouch:** slow-mo on **big destructive takedowns only**.
 
+## Destruction & deformation
+- **Approach:** physical-*looking* approximation — **deformable 2D meshes** (texture on a
+  low-poly mesh), not true soft-body.
+- **What deforms:** cars, walls/barriers, obstacles/props.
+- **Localization:** per-zone (front/sides/rear) on cars.
+- **Mechanical effect:** **only the collision shape** deforms with the mesh — **no stat
+  penalties**. The hitbox change is the entire gameplay consequence. 🧱
+- **Collision:** deforms via a **simplified, low-cadence collision proxy** (not per-visual-
+  vertex). The system's main perf/balance risk; **visual-only is the fallback**. 🧱
+- **Asymmetry:** player car **sober/realistic** (accumulates naturally; sparks/smoke ~one hit
+  from death); enemies **exaggerated** — shed panels through a fight, **split on kill**. ⚖️
+- **Player death:** full enemy-grade destruction (can break apart).
+- **Debris:** shed panels + wreckage **linger as collidable hazards**, then fade.
+- **Sources:** car↔car, car↔wall/obstacle, weapons, explosive barrels.
+- **Persistence:** car deformation across the **whole run** until a **full** repair restores it;
+  environment damage **per-race** (resets next node).
+- **Source of truth:** **both** — instant visual kick on impact (engine), reconciled to Core's
+  authoritative HP/damage/death.
+- **Determinism:** non-deterministic (presentation/physics); Core stays the deterministic part.
+- **Feedback:** **force-scaled layers** (crunch SFX, sparks, smoke, screenshake); takedowns add
+  **hitstop + shake** atop the existing big-takedown slow-mo.
+- **Grid / perf:** small **4–6 car** field; target **modern mid-range GPU**.
+- **Roadmap:** **full-ish deformation built inside M1** (part of proving the verb). 🧱
+
 ## Boost & items
 - **Boost meter:** single, free-spend; **multi-source weighted by car/build**.
 - **Item boxes:** **CUT.** Offense = weapons + physics + hazards.
@@ -117,3 +141,5 @@ Format: **Decision** — short rationale/notes. Items marked ⚖️ are flagged 
 - ⚖️ Build-defining combo ceiling vs. degenerate builds.
 - 🧱 Heaviest content lines: bespoke bosses, curated events, ~21 enemy designs, robust
   accessibility — budget explicitly (see Roadmap).
+- 🧱 Deforming-collision destruction (perf + balance); added to M1 scope. Fallback: visual-only.
+- ⚖️ Player crumple thresholds — how late the "near-death" sparks/smoke tell triggers.

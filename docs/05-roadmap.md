@@ -9,7 +9,7 @@ building breadth, and hit a Steam-page/wishlist milestone early.
 | #   | Milestone                     | Proves / delivers                                   | Exit criteria |
 |-----|-------------------------------|-----------------------------------------------------|---------------|
 | M0  | Foundations                   | Repo, CI, the seam, a drivable grey-box car         | A car you can drive on one track; Core/Game/Tests projects build; CI green |
-| M1  | **Takedown vertical slice**   | *Is ramming fun?* — the make-or-break question      | 1 player car + 1 AI on 1 track; takedowns, damage, win/lose a single race. **It feels great.** |
+| M1  | **Takedown vertical slice**   | *Is ramming fun?* — the make-or-break question      | 1 player car + 1 AI on 1 track; takedowns, damage, **dynamic deformation/destruction**, win/lose a single race. **It feels great.** |
 | M2  | Run-loop vertical slice       | The roguelite loop holds together                   | Mini Act-1 map (3 node types), upgrade draft, Scrap, persistent damage across ~4 races, 1 boss. A full tiny run, start→finish. |
 | M3  | Act 1 content-complete (demo) | A polished, shippable slice                         | All Act-1 enemies/tracks, full Vanguard pool, Shop + Repair + Event, 1 boss. Externally playtestable. |
 | M4  | **Steam page + demo**         | Wishlists; market validation                        | Capsule art, trailer, store page live; demo build (Next Fest-ready). Commercial gate. |
@@ -25,6 +25,8 @@ building breadth, and hit a Steam-page/wishlist milestone early.
 - Stand up CI (`dotnet test` green on an empty-but-real test).
 - Implement the **seam contracts** (`RaceConfig`/`RaceResult`) as empty-but-real DTOs.
 - Grey-box: a `RigidBody2D` car you can drive on a flat track with placeholder handling.
+- Build the grey-box car on a **deformable-mesh representation** from the start, so M1's
+  destruction system is a tuning job, not a rebuild. (Handling still placeholder.)
 - *Deliverable:* "I can drive a box around a box." Boring on purpose.
 
 ### M1 — Takedown vertical slice (THE milestone)
@@ -33,6 +35,11 @@ Everything here serves pillar #1. Nothing else matters until this is fun.
 - Damage model: ram chip-HP + **environmental slams** (walls, barrels) + HP. **Clean takedowns
   cost you nothing**; botched collisions hurt — tune that line until it feels fair and great.
 - **Aftertouch slow-mo on big destructive takedowns.**
+- **Dynamic destruction & deformation (now part of proving the verb):** deformable-mesh
+  cars/walls/props, localized crumple, enemy panel-shedding + **split-on-kill**, the simplified
+  deforming-collision proxy, debris-as-hazard, and **force-scaled crunch (SFX/sparks/smoke/shake)**.
+  Player damage reads soberly; spectacle is on the enemies. This raises M1's scope deliberately —
+  the crunch *is* part of what makes the verb feel good. 🧱
 - One player-focused AI opponent that drives and can be taken down (and pressures you).
 - Wrecked opponent **respawns set back ∝ hit force**; player **does not respawn** (HP→0 ends it).
 - Win by **finishing 1st** on one track.
@@ -79,6 +86,7 @@ Everything here serves pillar #1. Nothing else matters until this is fun.
 | Scope explosion (4 cars × 3 acts is a lot, solo)  | Vertical-slice-first; ship 1 car + Act 1 fully before breadth; content-as-data to cut per-item cost. |
 | AI driving is harder than expected                | Treat AI as a first-class subsystem behind `IDriveInput`; integration tests for "doesn't get stuck"; iterate per archetype. |
 | Physics feel eats unbounded time                  | Time-box tuning passes; lean on playtest notes; remember Core correctness ≠ fun, only playtesting proves fun. |
+| Deforming-collision destruction is ambitious (perf + balance) | Simplified low-cadence collision proxy, capped debris, small 4–6-car grid; treat as a dedicated M1 tuning surface; **fall back to visual-only deformation** if the changing hitbox proves unbalanceable. |
 | First-game-on-Steam unknowns (launch, ports)      | M4 store page early surfaces process unknowns 6–12 months before they're critical. |
 | Burnout (the human kind), solo over 12–18 mo      | Milestones end in playable builds = steady morale wins; market feedback at M4 sustains motivation. |
 

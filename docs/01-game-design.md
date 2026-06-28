@@ -11,7 +11,9 @@ Working title: **SCRAPLINE**
 Every feature serves one of these. If it serves none, cut it.
 
 1. **The takedown feels incredible.** (Burnout DNA) Slamming a rival into a wall, barrel, or
-   traffic is the core verb — weighty, readable, satisfying every time.
+   traffic is the core verb — weighty, readable, satisfying every time. Cars and the
+   environment **visibly deform and break** under impact: enemies crumple and split apart on a
+   kill, while your own car wears its damage more soberly (see §4).
 2. **Builds are expressive and car-defined.** (Slay the Spire DNA) Your car is your character;
    it dictates which passive upgrades you see and how you win.
 3. **Damage is a run-long resource.** Persistent HP with scarce repair turns every race into
@@ -89,6 +91,28 @@ mods) is passive. No per-car active abilities.
   chance to line up the next hit.
 - Wrecking an opponent **respawns them after a delay, set back proportionally to how hard you
   hit them** — a clean high-speed slam is a big tempo swing; a glancing wreck is minor.
+
+**Dynamic destruction & deformation**
+- **Everything deforms.** Cars, walls, and obstacles crumple under impact via a
+  physical-*looking* approximation (deformable meshes, not full soft-body). Damage is
+  **localized** — a rear-ended car is crushed at the back.
+- **Asymmetric by design (readability vs spectacle).** Your car deforms **soberly** — dents
+  accumulate naturally and stay readable, with sparks/smoke only when you're ~one hit from
+  death (a danger tell). Enemies are **exaggerated**: they shed panels through a fight and
+  **break apart on a kill** for maximum payoff. On death, the player gets the full
+  enemy-grade destruction too.
+- **The only gameplay effect is the changing collision shape.** Deformation alters a car's
+  hitbox (a crushed car drives/feels different) but applies **no separate stat penalties** —
+  feel and emergence over bookkeeping.
+- **Debris is alive briefly.** Shed panels and wreckage **linger as collidable hazards**
+  (slam a rival into them) before fading.
+- **Sources:** car↔car, car↔wall/obstacle, weapons, and explosive barrels.
+- **Persistence:** car deformation persists across the **whole run** (a battered car tells
+  your story) until a repair, which **fully restores** it; environment damage lasts the race
+  and resets at the next node.
+- **Feedback scales with force:** crunch SFX, sparks, smoke, and screenshake all ramp with
+  impact; takedowns punch with **hitstop + shake** (atop the existing aftertouch slow-mo on
+  the biggest hits).
 
 **Persistent damage**
 - HP carries between races. Recovery is scarce (Repair Bay nodes, pricey shop repairs, the
@@ -176,8 +200,9 @@ neutral pool**.
 - **Art:** gritty industrial, but **readability enforced** via car color-coding, glowing hazard
   accents, and clean silhouettes against the grime.
 - **Audio:** aggressive rock/metal energy (royalty-free/original to start to dodge licensing).
-- **Game-feel:** punchy but **readability-first** — generous hitstop/shake/debris and slow-mo
-  on big takedowns, always tuned to keep the top-down picture clear.
+- **Game-feel:** punchy but **readability-first** — generous hitstop/shake/debris,
+  **force-scaled crunch & deformation**, and slow-mo on big takedowns, always tuned to keep the
+  top-down picture clear (your car stays legible; enemies get the spectacle).
 - **HUD:** rich but clean — HP, boost meter, signature/charge state, race position, weapon
   cooldowns, track-progress indicator, all glanceable.
 - **Run summary:** detailed (distance/acts, takedowns, biggest hit, build highlights, Cores,

@@ -74,6 +74,11 @@ the things that *only* exist once the engine is involved:
   oil slick → reduces grip; shield → blocks one hit.
 - **Scene flow.** Menu → Car Select → Map → Race → Reward → Map transitions wire up and the
   `GameDirector` carries the Core run object across them.
+- **Destruction invariants (occurrence/ranges, not exact shapes).** A hard enough hit deforms
+  the struck zone; an opponent at 0 HP triggers the break-apart; debris count stays capped;
+  a repair returns the collision proxy to baseline. Assert *that it happens* and stays within
+  bounds — never exact vertex positions; deformation itself is non-deterministic and
+  playtested for feel.
 
 ### Patterns
 - Assert **invariants and ranges**, not exact physics outputs.
@@ -93,7 +98,8 @@ A tiny number of high-value tests:
 
 - **"Does it feel good?"** Takedown weight, handling, game feel, difficulty balance,
   fun — these are answered by **playtesting**, captured as notes, not asserted in code.
-- **Exact physics outputs / pixel-perfect rendering.** Out of scope by design.
+- **Exact physics outputs / pixel-perfect rendering / deformation shapes.** Out of scope by
+  design — *that* deformation occurs is integration-tested; how it looks/feels is playtested.
 
 ## CI
 

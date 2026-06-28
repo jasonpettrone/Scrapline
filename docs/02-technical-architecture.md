@@ -71,6 +71,32 @@ This seam is the backbone of the whole codebase. Keep it narrow and serializable
   frame-for-frame, and we don't pretend otherwise (see GDD non-goals). We never feed physics
   results back into anything that needs determinism beyond the coarse `RaceResult`.
 
+## Destruction & deformation
+
+A signature system (see GDD §4). It lives **almost entirely in the Godot layer** and is
+**non-deterministic** — consistent with the determinism policy above (it's presentation +
+physics, never fed back into anything Core relies on beyond HP).
+
+- **Cars are a texture on a low-poly deformable 2D mesh.** Impacts push the struck zone's
+  vertices inward by force × direction (front/side/rear localization).
+- **Collision deforms with the visual — via a *simplified* polygon.** A coarse collision shape
+  is re-derived from the mesh at a lower resolution/cadence than the visual, so a crushed car
+  genuinely changes hitbox without paying full per-vertex collision cost. **This is the
+  riskiest part of the system** (perf + balance) — keep the collision proxy cheap and its
+  update rate tunable; visual-only deformation is the fallback if the hitbox proves
+  unbalanceable.
+- **Core stays authoritative for what matters:** HP, death (HP→0), takedown resolution, repair,
+  and run-long persistence remain Core logic crossing the seam as today. The deformation layer
+  *reads* that state (e.g., the player's near-death threshold drives the sparks/smoke tell) and
+  adds immediate impact kicks reconciled to it. Deformation severity carries **no stat
+  penalty** — the changed hitbox **is** the only mechanical consequence.
+- **Asymmetry is a presentation rule**, keyed off role: the player car deforms soberly; AI cars
+  exaggerate, shed panels, and split on a kill; the player gets full destruction on death.
+  `RaceConfig` may carry a per-car **deformation profile** (restrained/exaggerated) so this is
+  data-tunable rather than hardcoded.
+- **Debris** are short-lived physics bodies that act as collidable hazards, then fade (capped
+  for the 4–6-car grid; target a modern mid-range GPU).
+
 ## Core — internal modules
 
 | Module                | Responsibility                                                            |
@@ -99,6 +125,7 @@ is a pure function. Mod stacking order, caps, and synergies all get exhaustive u
 | **Input**         | An `IDriveInput` interface with two implementations: `PlayerInput` (keyboard/controller via Godot Input actions) and `AiInput` (driving brain). Cars don't know who's driving. |
 | **AI driving**    | Steering behaviors: follow a per-track racing-line path, with aggression/avoidance layers per enemy archetype. The meatiest Godot-side subsystem — budget time. |
 | **Hazards/traffic** | Area/body nodes (barrels, oil, boost pads, neutral traffic) applying effects on contact; placement seeded from `RaceConfig`. No item-box pickups (cut). |
+| **Destruction**   | Deformable-mesh cars/walls/props; impacts crush localized zones; a **simplified collision polygon** tracks the deform (the perf/balance risk); debris bodies linger then fade. Non-deterministic; playtested. |
 | **Weapons**       | Per-weapon cooldown components on cars; mixed auto-lock / fixed-mount; the only active offense. |
 | **Map UI**        | Renders the Core's node graph; sends the chosen node back to the director.   |
 | **Steam**         | Thin wrapper behind an `IPlatform` interface so the game runs without Steam in dev/CI. (M7) |
@@ -134,3 +161,7 @@ hardcoded in either layer.
   iterated and tested in isolation (e.g., "AI completes track without getting stuck").
 - **Don't leak Godot into Core** under deadline pressure. The no-Godot-reference test is the
   guardrail; respect it.
+- **Deforming collision is the destruction system's sharp edge.** A hitbox that changes shape
+  is emergent but hard to balance and to optimize. Mitigate with a *simplified*, low-cadence
+  collision proxy (not per-visual-vertex), capped debris, and the small 4–6-car grid; keep
+  visual-only deformation available as a fallback. Treat it as a dedicated tuning surface in M1.
