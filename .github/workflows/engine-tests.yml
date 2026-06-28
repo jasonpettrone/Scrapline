@@ -1,12 +1,10 @@
 name: Engine smoke test
 
-# The slower loop: boot the real Godot project headlessly and prove the
-# Godot <-> Core seam is intact. Runs on PRs and pushes to master (docs/04).
+# The slower loop: boot the real Godot project headlessly, prove the Godot <-> Core
+# seam is intact, and run the GdUnit4 in-engine tests. Runs on every push and PR (docs/04).
 on:
   push:
-    branches: [ master ]
   pull_request:
-    branches: [ master ]
 
 jobs:
   smoke:
