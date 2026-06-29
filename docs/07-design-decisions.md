@@ -17,8 +17,11 @@ Format: **Decision** — short rationale/notes. Items marked ⚖️ are flagged 
 - **Race length:** ~90–120s.
 - **Field size:** varies, **decided by node type**.
 - **Handling:** weighty momentum + drift.
-- **Drift→boost:** tiered mini-turbo (hold & release).
-- **Boost pads:** two types — meter-refill and instant-speed.
+- **Drift:** hold-button cornering/positioning tool (loosens grip + adds turn authority).
+  **Does not generate boost** — a drift-charged meter was exploitable (wiggle-farming), cut.
+- **Boost pads:** three kinds — **small** (partial meter refill), **large** (fill to full;
+  both respawn on cooldown), **launch** (instant speed kick, off-meter). The primary on-track
+  fuel; route through them (Rocket-League-style).
 - **Rubber-banding:** none (pure skill).
 - **Wrecked opponents:** respawn after a delay, **set back ∝ takedown force**.
 - **Player wreck:** **no respawn — HP→0 ends the run.**
@@ -57,6 +60,8 @@ Format: **Decision** — short rationale/notes. Items marked ⚖️ are flagged 
 
 ## Boost & items
 - **Boost meter:** single, free-spend; **multi-source weighted by car/build**.
+- **Sources:** passive trickle (all cars; Comet leans hard) + on-track pads (small/large/launch);
+  later takedowns (Juggernaut) and weapon hits (Ordnance). **Not drifting** (cut — exploitable).
 - **Item boxes:** **CUT.** Offense = weapons + physics + hazards.
 
 ## Weapons (only active offense)
