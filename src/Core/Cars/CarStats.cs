@@ -31,6 +31,22 @@ public sealed record CarStats
     /// <summary>Vehicle mass (Godot units). Heavier cars win symmetric rams and resist knockback.</summary>
     public float Mass { get; init; } = 1.0f;
 
+    /// <summary>Hit points. A run-long resource — chipped by botched collisions and hard wall
+    /// hits, restored only by scarce repairs. HP→0 wrecks the car. (Armor parts scale this.)</summary>
+    public float MaxHp { get; init; } = 100f;
+
+    // ── Ram damage to the player (this car's threat as an aggressor) ──────────────
+    // When this car cleanly rams the PLAYER, the player takes a value in this range scaled by the
+    // hit's closing speed (gentle → min, hard → max). It's how enemies are tuned to be more or less
+    // dangerous; the player's own values are unused (the player never damages itself by ramming).
+    // A "basic" enemy is gentle (0–5); tougher enemies raise this range.
+
+    /// <summary>Least HP this car deals the player on a glancing-but-clean ram.</summary>
+    public float RamDamageMin { get; init; } = 0f;
+
+    /// <summary>Most HP this car deals the player on a hard clean ram.</summary>
+    public float RamDamageMax { get; init; } = 5f;
+
     // ── Grip & drift (M1 driving feel) ──────────────────────────────────────────
     // The car bleeds off sideways (lateral) velocity each step so it mostly goes where
     // it's pointed; momentum still matters because the bleed is partial. Drifting drops
@@ -87,6 +103,7 @@ public sealed record CarStats
         TurnSpeed > 0f &&
         Mass > 0f &&
         ReverseSpeedFactor is > 0f and <= 1f &&
+        MaxHp > 0f &&
         Grip > 0f &&
         DriftGrip is > 0f &&
         DriftGrip <= Grip &&
@@ -95,5 +112,7 @@ public sealed record CarStats
         BoostRegenRate >= 0f &&
         BoostDrainRate > 0f &&
         BoostAcceleration > 0f &&
-        BoostMaxSpeed > MaxSpeed;
+        BoostMaxSpeed > MaxSpeed &&
+        RamDamageMin >= 0f &&
+        RamDamageMax >= RamDamageMin;
 }

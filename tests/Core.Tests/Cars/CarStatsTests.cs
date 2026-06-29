@@ -47,6 +47,12 @@ public class CarStatsTests
     }
 
     [Fact]
+    public void Non_positive_max_hp_is_not_well_formed()
+    {
+        Assert.False((CarStats.Default with { MaxHp = 0f }).IsWellFormed);
+    }
+
+    [Fact]
     public void Drift_grip_above_normal_grip_is_not_well_formed()
     {
         // Drifting must loosen, never tighten, the car: DriftGrip <= Grip.
