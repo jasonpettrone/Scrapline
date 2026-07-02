@@ -348,6 +348,127 @@ public class DeformableSilhouetteTests
         Assert.True(System.MathF.Abs(off.Y) < 0.01f, $"should not drift sideways, got {off.Y}");
     }
 
+    // ── Per-hit depth cap (walls: one slam bites modestly, the pocket keeps growing) ──
+
+    [Fact]
+    public void One_hit_bites_at_most_MaxHitDepth_but_repeated_hits_keep_deepening()
+    {
+        var profile = Profile with { MaxHitDepth = 4f, MaxCrumpleDepth = 10f };
+        var s = DeformableSilhouette.Box(50f, 30f, 4, profile);
+        var hit = new Indenter(new Vector2(50f, 0f), new Vector2(-1f, 0f), HalfWidth: 10f, Sharpness: 0f);
+
+        // A monster single hit (raw depth 1000 × 0.01 = 10px) is capped at the per-hit bite.
+        s.ApplyHit(hit, force: 1000f, ImpactZone.Front);
+        Settle(s);
+        float afterOne = MaxDisplacement(s);
+        Assert.True(afterOne <= 4.001f, $"one hit must bite ≤ 4px, got {afterOne}");
+
+        // But the same slam again keeps digging toward the accumulated budget.
+        s.ApplyHit(hit, force: 1000f, ImpactZone.Front);
+        Settle(s);
+        float afterTwo = MaxDisplacement(s);
+        Assert.True(afterTwo > afterOne + 1f, $"the second slam should deepen the pocket: {afterOne} → {afterTwo}");
+        Assert.True(afterTwo <= 10.001f, "still bounded by the accumulated budget");
+    }
+
+    // ── Ring integrity (the fold guard) ───────────────────────────────────────────
+
+    [Fact]
+    public void Hammering_from_every_direction_never_self_intersects_the_ring()
+    {
+        // Regression: repeated angled hits accumulated tangential vertex slide until vertices
+        // passed their neighbours — a self-intersecting ring, which broke Godot's triangulation
+        // (the car's body vanished) and the collider's convex decomposition. The fold guard caps
+        // slide along the surface, so the ring must stay simple under any battering.
+        var s = DeformableSilhouette.Box(48f, 24f, 10, DeformationProfile.Exaggerated);
+        var rng = new System.Random(1234);
+
+        for (int hit = 0; hit < 300; hit++)
+        {
+            float angle = (float)(rng.NextDouble() * System.Math.Tau);
+            var dir = new Vector2(System.MathF.Cos(angle), System.MathF.Sin(angle));
+            var contact = dir * 40f;                       // roughly on the body from any side
+            var push = -dir;                               // driving inward
+            float halfWidth = (float)(rng.NextDouble() * 24f);
+            float sharpness = (float)rng.NextDouble();
+            s.ApplyHit(new Indenter(contact, push, halfWidth, sharpness),
+                force: 20f + (float)(rng.NextDouble() * 60f), ImpactZone.Front);
+        }
+        Settle(s);
+
+        Assert.False(RingSelfIntersects(s), "the battered ring must remain a simple polygon");
+    }
+
+    /// <summary>O(n²) proper-crossing check between all non-adjacent ring edges.</summary>
+    private static bool RingSelfIntersects(DeformableSilhouette s)
+    {
+        int n = s.VertexCount;
+        var v = s.CurrentVertices();
+        for (int i = 0; i < n; i++)
+        {
+            for (int j = i + 2; j < n; j++)
+            {
+                if (i == 0 && j == n - 1)
+                    continue; // adjacent through the wrap
+                if (SegmentsCross(v[i], v[(i + 1) % n], v[j], v[(j + 1) % n]))
+                    return true;
+            }
+        }
+        return false;
+    }
+
+    private static bool SegmentsCross(Vector2 a, Vector2 b, Vector2 c, Vector2 d)
+    {
+        static float Orient(Vector2 p, Vector2 q, Vector2 r) =>
+            (q.X - p.X) * (r.Y - p.Y) - (q.Y - p.Y) * (r.X - p.X);
+        float o1 = Orient(a, b, c), o2 = Orient(a, b, d);
+        float o3 = Orient(c, d, a), o4 = Orient(c, d, b);
+        return o1 * o2 < 0f && o3 * o4 < 0f; // strictly proper crossings only
+    }
+
+    // ── Settle reporting (what the Godot layer gates its per-frame work on) ──────
+
+    [Fact]
+    public void Residual_reports_inflight_crunch_and_reaches_zero_when_settled()
+    {
+        var s = Box();
+        Assert.Equal(0f, s.MaxResidual);
+
+        s.ApplyHit(new Vector2(50f, 0f), force: 500f, ImpactZone.Front);
+        Assert.True(s.MaxResidual > 1f, "a fresh hit should leave crunch in flight");
+
+        Settle(s);
+        Assert.True(s.MaxResidual < 0.05f, $"settled residual should be ~0, got {s.MaxResidual}");
+    }
+
+    [Fact]
+    public void Residual_is_an_absolute_distance_unaffected_by_vertex_count()
+    {
+        // The Deformable settle bug: gating on a CrumpleAmount delta (an average over the ring)
+        // let small dents on high-vertex walls freeze half-eased. The residual must report the
+        // same in-flight distance whether the ring has 16 vertices or 80.
+        var small = DeformableSilhouette.Box(50f, 30f, 4, Profile);
+        var large = DeformableSilhouette.Box(50f, 30f, 20, Profile);
+        var hit = new Indenter(new Vector2(50f, 0f), new Vector2(-1f, 0f), HalfWidth: 10f, Sharpness: 0f);
+
+        small.ApplyHit(hit, force: 300f, ImpactZone.Front);
+        large.ApplyHit(hit, force: 300f, ImpactZone.Front);
+
+        Assert.Equal(small.MaxResidual, large.MaxResidual, 3);
+    }
+
+    [Fact]
+    public void CurrentVertex_matches_the_allocating_snapshot()
+    {
+        var s = Box();
+        s.ApplyHit(new Vector2(50f, 0f), force: 500f, ImpactZone.Front);
+        Settle(s);
+
+        var verts = s.CurrentVertices();
+        for (int i = 0; i < s.VertexCount; i++)
+            Assert.Equal(verts[i], s.CurrentVertex(i));
+    }
+
     // ── helpers ──────────────────────────────────────────────────────────────────
 
     private static int MovedVertexCount(DeformableSilhouette s, float threshold = 0.5f)

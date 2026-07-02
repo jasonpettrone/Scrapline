@@ -65,7 +65,12 @@ Only vertices on the **struck-facing half** move (gate: `outward · push < 0`), 
 The depth across the surface follows the impactor's shape: full inside the flat `half-width` core,
 then a straight ramp to zero — a **flat impactor leaves a wide, flat-bottomed (rectangular) imprint;
 a corner leaves a narrow V (triangular)**. Magnitude is `damage × profile.CrumpleScale`, clamped so
-a vertex can't cross the centre. Displacement **accumulates** and **eases in over ~0.3s** so a hit
+a vertex can't cross the centre. Two guards keep the ring a **simple polygon** (a self-intersecting
+ring breaks Godot's triangulation and convex decomposition — the repeated-ram vanishing-body bug):
+a **fold guard** caps each vertex's accumulated slide *along* the surface so it can't pass its
+neighbours, and a per-hit **crossing resolver** relaxes any edges that still cross (deep dents from
+two faces meeting at a corner) back toward rest until the ring is simple.
+Displacement **accumulates** and **eases in over ~0.3s** so a hit
 *crunches* rather than snapping. The Godot layer derives the `Indenter`'s shape from the two bodies'
 relative orientation (a parallel face → flat/wide; a 45°-cocked car or corner-first wall hit → sharp).
 
@@ -140,11 +145,22 @@ pool capped at ~24 with fade-and-reclaim; pooled `GpuParticles2D` for sparks/smo
 2. ✅ **Visual deform** — `Impact` signal broadened on `CarController`; `CarDeformer` renders the
    deformed silhouette onto the body polygon; player→Sober, rivals→Exaggerated. _Needs a feel pass
    in-engine._
-3. **Debris + shed** — pooled debris bodies, plow & scatter, enemy split-on-kill.
+3. ✅ **Debris + shed** — `DebrisPool` (capped at 24, oldest recycled) + `Debris` bodies: a shed zone
+   is cut from the deformed silhouette as panel strips (a car's Side zone yields both flanks), flung
+   along its outward direction inheriting the car's momentum, and the crumple deepens where it tore
+   off. Debris is low-mass (plow & scatter) and explicitly excluded from damage and the wall-backed
+   ("sandwich") detection — bouncing a shed bumper is free. Enemy split-on-kill queues through the
+   same path when takedowns return. _Needs a feel pass in-engine._
 4. ✅ **Collision proxy** — `CollisionPolygon2D` (Solids) driven from a decimated silhouette at ≤10 Hz,
-   behind `VisualOnly`. The carved hitbox lets you drive into the dent and crumple further. _Needs a
-   balance/perf pass in-engine._
-5. **Feedback** — sparks/smoke/crunch/shake/hitstop, force-scaled; player danger tell.
+   behind `VisualOnly`. The carved hitbox lets you drive into the dent and crumple further.
+   Decimation preserves rest-shape corners (uniform every-Nth chamfered box corners, clipping cars
+   into walls); rebuilds and settle detection gate on absolute per-vertex drift, not the ring-wide
+   average (which froze small dents on high-vertex walls half-eased). _Needs a balance/perf pass
+   in-engine._
+5. ✅ (partial) **Feedback** — `ImpactFeedback`: force-scaled camera shake (trauma²), 40–90 ms hitstop
+   on solid hits, spark bursts at the contact, and the takedown slow-mo — one node owns
+   `Engine.TimeScale` so the channels compose. Player danger tell honoured via
+   `SparksBelowHpFraction`. _Remaining: smoke on badly-crumpled zones, crunch SFX._
 
 ### Wall-backed impacts (replaces the "smush") ✅
 The old time-based crush DPS is gone. A car pinned against a wall on the side **away from the
@@ -157,16 +173,33 @@ Walls are first-class — they **deform**, their **hitboxes change**, and car↔
 damage + destruction both ways. The car's deformer was generalized into a shared `Deformable` (visual
 polygon + `CollisionPolygon2D` + Core silhouette) used by both cars and `DeformableWall`. Walls use a
 density-based silhouette (`BoxWithSpacing`, capped for their extreme aspect ratios) and the `Wall`
-profile (shallow dents, no shedding, no HP/wreck). The struck car localizes the hit and calls the
-wall's `TakeImpact`; the wall builds the `Indenter` in its own frame (square slam → wide dent,
-glancing → sharp). Dents persist for the race.
+profile (no shedding, no HP/wreck). The struck car localizes the hit and calls the wall's
+`TakeImpact`; the wall builds the `Indenter` in its own frame (square slam → wide dent, glancing →
+sharp), picking the struck face by **nearest edge** — not direction-from-centre, which on a long
+wall resolved nearly every hit to the end cap. Dents persist for the race and **keep deepening**
+under repeated slams: one slam bites at most `MaxHitDepth` (~14px, the per-hit feel), while the
+accumulated budget is thickness-aware (`CarveBudgetFraction × thickness`) — 0.45 by default so two
+opposing dents can never meet through a wall, raised to 0.8 on the arena boundary walls, which are
+only ever hit from one side. The collider keeps every dented vertex (only pristine runs are
+decimated), so the hitbox tracks the visual pocket exactly — no invisible walls.
 
-### Takedowns temporarily disabled
-`CarController.TakedownsEnabled = false` (M1 temp): cars take damage and deform fully but never wreck/
-vanish/respawn, while we tune takedown balance and build the split-in-half theatrics. HP floors at 1.
+### Takedowns: damage-based, with the split spectacle ✅
+A takedown fires when **one hit finishes the victim's remaining HP** — a fresh rival needs a monster
+slam, a battered one dies to overkill (docs/08 §3). The speed-based clean one-shot
+(`DamageRules.OneShotSpeed`) remains as an extra instant path. On the kill: the deformed hull is
+**cut in two across the body's midline** (`Deformable.BuildSplitHalves` — the halves carry every
+dent of the fight) and both halves fly apart through the debris pool, carried along the killing
+blow; the feedback layer lands a full hitstop, max shake, a double spark burst, and the aftertouch
+slow-mo. The **player can't die in M1** (death/run-flow needs the M2 GameDirector): their HP floors
+at 1 instead.
 
 ### Player destruction
 The player's Sober pipeline already deforms (less). In the test scene that means **driving into
 walls**; car↔car player destruction is deferred to the AI-opponent task for playtesting.
+
+### Playtest range (M1)
+Two inert dummies on the bottom straight, side-on to the player's approach: a **blue crumple dummy**
+(huge HP — pure deform/shed testing) and a **green takedown dummy** (low HP — one hard clean ram
+one-shots it and fires the split). Wrecked dummies respawn on their marks; `R` resets the range.
 
 Each phase is independently playtestable, matching the milestone's feel-first cadence.

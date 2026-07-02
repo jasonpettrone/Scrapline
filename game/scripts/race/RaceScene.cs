@@ -1,3 +1,4 @@
+using System.Collections.Generic;
 using Godot;
 using Scrapline.Core.Cars;
 using Scrapline.Core.Contracts;
@@ -24,39 +25,61 @@ public partial class RaceScene : Node2D
     private const float WallThickness = 50f;
     private static readonly Vector2 CentralBlockSize = new(1500f, 900f); // the loop's middle island
 
-    // Takedown aftertouch + respawn (docs/08 §3). Tunable; the slow-mo intensity will read from
-    // the accessibility settings in Task 7.
-    private const float SlowMoScale = 0.35f;       // how slow time gets at the peak of a takedown
-    private const ulong SlowMoDurationMs = 800;    // real-time length of the slow-mo ramp
+    // Takedown respawn pacing (docs/08 §3). The aftertouch slow-mo/hitstop/shake now live in
+    // ImpactFeedback (the single owner of Engine.TimeScale). Wrecked dummies respawn on their own
+    // marks (a predictable practice range); "respawn behind the player" returns with the real AI.
     private const float RespawnMinDelay = 1.5f;    // seconds; a glancing wreck respawns soonest
     private const float RespawnMaxDelay = 4.0f;    // a huge slam sets the rival back longest
     private const float RespawnForceScale = 0.0025f;
-    private const float RespawnDistance = 420f;     // how far behind the player a rival reappears
-    private const float RespawnMargin = 200f;       // keep respawns this far inside walls/obstacles
 
     // Start transforms (shared by initial spawn and the debug reset).
     private static readonly Vector2 PlayerStart = new(ArenaWidth / 2f, ArenaHeight - 180f);
     private const float PlayerStartRotation = 0f;                       // facing right
-    private static readonly Vector2 DummyStart = new(ArenaWidth / 2f + 700f, ArenaHeight - 180f);
     private const float DummyStartRotation = -Mathf.Pi / 2f;           // facing across the player's path
+
+    // Two practice dummies (docs/09 playtest setup): a near-unkillable one to feel out crumple/
+    // panel-shed destruction, and a low-HP one to practice the damage-based takedown — one hard
+    // clean ram (~700+ px/s closing) one-shots it and fires the split spectacle.
+    private static readonly Vector2 CrumpleDummyStart = new(ArenaWidth / 2f + 700f, ArenaHeight - 180f);
+    private const float CrumpleDummyHp = 4000f;   // effectively unkillable: pure destruction testbed
+    private static readonly Vector2 TakedownDummyStart = new(ArenaWidth / 2f + 1400f, ArenaHeight - 180f);
+    private const float TakedownDummyHp = 80f;    // a solid clean ram beats this in one hit
+
+    /// <summary>One practice dummy and its home mark (spawn + wreck-respawn point).</summary>
+    private sealed class DummySlot
+    {
+        public required CarController Car;
+        public required Vector2 Start;
+        public required float StartRotation;
+        public required string Label;
+        public ulong RespawnAtMs; // wall-clock respawn time (0 = alive)
+    }
 
     private RaceConfig _config = RaceConfig.Default;
     private CarController? _car;
-    private CarController? _dummy;
+    private readonly List<DummySlot> _dummies = new();
     private Camera2D? _camera;
     private Label? _debugReadout;
-
-    private ulong _slowMoEndMs;   // wall-clock end of the current slow-mo (0 = none)
-    private ulong _respawnAtMs;   // wall-clock time to respawn the dummy (0 = none)
+    private DebrisPool? _debris;
+    private ImpactFeedback? _feedback;
 
     public override void _Ready()
     {
         BuildArena();
         SpawnBoostPads();
         SpawnHazards();
+
+        // Destruction support systems, created before the cars so they can be injected (docs/09).
+        _debris = new DebrisPool();
+        AddChild(_debris);
+        _feedback = new ImpactFeedback();
+        AddChild(_feedback);
+
         SpawnCar(_config.PlayerCar);
-        SpawnPracticeDummy();
+        SpawnPracticeDummies();
         SetUpCamera();
+        if (_feedback is not null)
+            _feedback.Camera = _camera;
         SetUpDebugReadout();
 
         // Proves the seam on boot (and is what the headless smoke test asserts).
@@ -74,7 +97,6 @@ public partial class RaceScene : Node2D
         if (_camera is not null && _car is not null)
             _camera.GlobalPosition = _car.GlobalPosition; // upright follow (camera doesn't rotate with the car)
 
-        UpdateSlowMo();
         UpdateRespawn();
         UpdateDebugReadout();
     }
@@ -113,18 +135,23 @@ public partial class RaceScene : Node2D
         float w = ArenaWidth, h = ArenaHeight, t = WallThickness;
 
         // Four boundary walls — each its own deformable body so cars carve into them (docs/09).
-        AddWall(new Vector2(w / 2, t / 2), new Vector2(w, t), wallColor);           // top
-        AddWall(new Vector2(w / 2, h - t / 2), new Vector2(w, t), wallColor);       // bottom
-        AddWall(new Vector2(t / 2, h / 2), new Vector2(t, h), wallColor);           // left
-        AddWall(new Vector2(w - t / 2, h / 2), new Vector2(t, h), wallColor);       // right
+        // Only ever hit from inside the arena, so they take the deep one-sided carve budget.
+        AddWall(new Vector2(w / 2, t / 2), new Vector2(w, t), wallColor, oneSided: true);      // top
+        AddWall(new Vector2(w / 2, h - t / 2), new Vector2(w, t), wallColor, oneSided: true);  // bottom
+        AddWall(new Vector2(t / 2, h / 2), new Vector2(t, h), wallColor, oneSided: true);      // left
+        AddWall(new Vector2(w - t / 2, h / 2), new Vector2(t, h), wallColor, oneSided: true);  // right
 
-        // Central block — turns the arena into a loop you drive around.
+        // Central block — turns the arena into a loop you drive around. Reachable from all sides,
+        // so it keeps the two-sided carve budget (opposing dents must never meet).
         AddWall(new Vector2(w / 2, h / 2), CentralBlockSize, new Color(0.30f, 0.32f, 0.40f));
     }
 
-    private void AddWall(Vector2 center, Vector2 size, Color color)
+    private void AddWall(Vector2 center, Vector2 size, Color color, bool oneSided = false)
     {
-        AddChild(new DeformableWall { Position = center, Size = size, Color = color });
+        var wall = new DeformableWall { Position = center, Size = size, Color = color };
+        if (oneSided)
+            wall.CarveBudgetFraction = 0.8f;
+        AddChild(wall);
     }
 
     /// <summary>
@@ -162,7 +189,9 @@ public partial class RaceScene : Node2D
         car.IsPlayer = true;                   // the forgiving damage model (docs/08 §2)
         car.Position = PlayerStart;            // bottom straight
         car.Rotation = PlayerStartRotation;    // facing right
+        car.DebrisPool = _debris;
         AddChild(car);
+        _feedback?.RegisterCar(car);
         _car = car;
     }
 
@@ -175,101 +204,61 @@ public partial class RaceScene : Node2D
     }
 
     /// <summary>
-    /// A throwaway target so the damage model is playtestable before the real AI lands (Task 5):
-    /// an inert, blue-tinted car parked on the bottom straight, facing across the player's path so
-    /// you can hit its side/rear (clean) or circle to its front (botched). It still takes damage
-    /// and gets shoved like any RigidBody2D.
+    /// The M1 practice range (docs/09): two inert targets on the bottom straight, both facing
+    /// across the player's approach so their side is the clean-hit surface. The first (blue) has
+    /// huge HP — a pure crumple/panel-shed testbed; the second (green) has low HP — one hard clean
+    /// ram one-shots it and fires the damage-based takedown split.
     /// </summary>
-    /// <summary>Beefed-up HP on the practice dummy so it survives several hits before wrecking —
-    /// purely a destruction-testing convenience (real enemy HP comes from RaceConfig). Tunable.</summary>
-    private const float DummyTestHp = 220f;
+    private void SpawnPracticeDummies()
+    {
+        SpawnDummy(CrumpleDummyStart, CrumpleDummyHp, new Color(0.5f, 0.65f, 1f), "Crumple");
+        SpawnDummy(TakedownDummyStart, TakedownDummyHp, new Color(0.45f, 0.9f, 0.55f), "Takedown");
+    }
 
-    private void SpawnPracticeDummy()
+    private void SpawnDummy(Vector2 start, float hp, Color tint, string label)
     {
         var dummy = CarScene.Instantiate<CarController>();
-        dummy.Configure(_config.PlayerCar with { MaxHp = DummyTestHp });
+        dummy.Configure(_config.PlayerCar with { MaxHp = hp });
         dummy.InputEnabled = false;
-        dummy.BaseTint = new Color(0.5f, 0.65f, 1f); // distinct from the red player
-        dummy.Position = DummyStart;
+        dummy.BaseTint = tint;
+        dummy.Position = start;
         dummy.Rotation = DummyStartRotation;         // facing "up", across the player's approach
-        dummy.Wrecked += OnDummyWrecked;
+        dummy.DebrisPool = _debris;
+
+        var slot = new DummySlot { Car = dummy, Start = start, StartRotation = DummyStartRotation, Label = label };
+        dummy.Wrecked += hitForce => OnDummyWrecked(slot, hitForce);
         AddChild(dummy);
-        _dummy = dummy;
+        _feedback?.RegisterCar(dummy);
+        _dummies.Add(slot);
     }
 
     /// <summary>
-    /// A rival takedown (docs/08 §3): freeze the wreck out of play, fire the aftertouch slow-mo on
-    /// big hits, and schedule a respawn whose delay scales with how hard it was hit.
+    /// A takedown (docs/08 §3): freeze the wreck out of play (the split halves flung by the car
+    /// are the visible remains), fire the aftertouch slow-mo, and schedule a respawn on the
+    /// dummy's mark with a delay that scales with how hard it was hit.
     /// </summary>
-    private void OnDummyWrecked(float hitForce)
+    private void OnDummyWrecked(DummySlot slot, float hitForce)
     {
-        if (_dummy is null)
-            return;
-
-        _dummy.SetInert(true); // freeze, hide, AND disable its collider so the wreck doesn't block traffic
+        slot.Car.SetInert(true); // freeze, hide, AND disable its collider so the wreck doesn't block traffic
 
         // Every takedown earns the aftertouch slow-mo (it IS the celebration); the respawn delay
         // scales with how hard the rival was hit, so a big slam buys a longer tempo swing.
-        TriggerSlowMo();
+        _feedback?.TriggerSlowMo();
 
         float delay = Mathf.Clamp(RespawnMinDelay + hitForce * RespawnForceScale, RespawnMinDelay, RespawnMaxDelay);
-        _respawnAtMs = Time.GetTicksMsec() + (ulong)(delay * 1000f);
-    }
-
-    private void TriggerSlowMo()
-    {
-        Engine.TimeScale = SlowMoScale;
-        _slowMoEndMs = Time.GetTicksMsec() + SlowMoDurationMs;
-    }
-
-    /// <summary>Ease time back to normal over the slow-mo window (real-time, so TimeScale-proof).</summary>
-    private void UpdateSlowMo()
-    {
-        if (_slowMoEndMs == 0)
-            return;
-
-        ulong now = Time.GetTicksMsec();
-        if (now >= _slowMoEndMs)
-        {
-            Engine.TimeScale = 1.0;
-            _slowMoEndMs = 0;
-            return;
-        }
-
-        float remaining = (_slowMoEndMs - now) / (float)SlowMoDurationMs; // 1 → 0
-        Engine.TimeScale = Mathf.Lerp(1.0f, SlowMoScale, remaining);
+        slot.RespawnAtMs = Time.GetTicksMsec() + (ulong)(delay * 1000f);
     }
 
     private void UpdateRespawn()
     {
-        if (_respawnAtMs == 0 || _car is null || _dummy is null)
-            return;
-        if (Time.GetTicksMsec() < _respawnAtMs)
-            return;
-
-        // Reappear behind the player along its heading (the "racing line" stand-in until the AI
-        // and a real track path land in Task 5/6), clamped into the drivable area so a player
-        // hugging a wall can't fling the rival out of bounds.
-        Vector2 behind = _car.GlobalPosition - Vector2.Right.Rotated(_car.Rotation) * RespawnDistance;
-        _dummy.Respawn(ClampToDrivable(behind), _car.Rotation);
-        _respawnAtMs = 0;
-    }
-
-    /// <summary>Push a point inside the playable ring: clamp to the outer walls, then, if it landed
-    /// in the central block, shove it out to the nearer straight (top or bottom corridor).</summary>
-    private static Vector2 ClampToDrivable(Vector2 p)
-    {
-        float lo = WallThickness + RespawnMargin;
-        p.X = Mathf.Clamp(p.X, lo, ArenaWidth - lo);
-        p.Y = Mathf.Clamp(p.Y, lo, ArenaHeight - lo);
-
-        // Central block is centred in the arena (see BuildArena).
-        Vector2 c = new(ArenaWidth / 2f, ArenaHeight / 2f);
-        float halfW = CentralBlockSize.X / 2f + RespawnMargin, halfH = CentralBlockSize.Y / 2f + RespawnMargin;
-        if (Mathf.Abs(p.X - c.X) < halfW && Mathf.Abs(p.Y - c.Y) < halfH)
-            p.Y = p.Y < c.Y ? c.Y - halfH : c.Y + halfH; // out to the nearer straight
-
-        return p;
+        ulong now = Time.GetTicksMsec();
+        foreach (DummySlot slot in _dummies)
+        {
+            if (slot.RespawnAtMs == 0 || now < slot.RespawnAtMs)
+                continue;
+            slot.Car.Respawn(slot.Start, slot.StartRotation);
+            slot.RespawnAtMs = 0;
+        }
     }
 
     /// <summary>Debug reset (D-pad Up / R): drop the player and rival back on their marks and clear
@@ -277,12 +266,15 @@ public partial class RaceScene : Node2D
     /// race reset (that's Task 6) — just a playtest convenience.</summary>
     private void ResetScene()
     {
-        Engine.TimeScale = 1.0;
-        _slowMoEndMs = 0;
-        _respawnAtMs = 0;
+        _feedback?.ResetFeel();
+        _debris?.Clear();
 
         _car?.Respawn(PlayerStart, PlayerStartRotation);
-        _dummy?.Respawn(DummyStart, DummyStartRotation);
+        foreach (DummySlot slot in _dummies)
+        {
+            slot.RespawnAtMs = 0;
+            slot.Car.Respawn(slot.Start, slot.StartRotation);
+        }
     }
 
     private void SetUpCamera()
@@ -322,9 +314,14 @@ public partial class RaceScene : Node2D
         string boost = _car.IsLaunching ? "LAUNCH" : _car.IsBoosting ? "BOOST" : "—";
         string iframes = _car.IsInvulnerable ? "  [I-FRAMES]" : string.Empty;
         string wrecked = _car.IsWrecked ? "  ** WRECKED **" : string.Empty;
-        string dummyHp = _dummy is null
-            ? string.Empty
-            : $"      Dummy HP {Mathf.CeilToInt(_dummy.CurrentHp),3}  Crumple {Mathf.RoundToInt(_dummy.CrumpleFraction * 100f),3}%";
-        _debugReadout.Text = $"HP {hp,3}   Boost {pct,3}%   {drift}   {boost}{iframes}{dummyHp}{wrecked}";
+
+        string dummies = string.Empty;
+        foreach (DummySlot slot in _dummies)
+        {
+            dummies += slot.Car.IsWrecked
+                ? $"      {slot.Label}: TAKEDOWN!"
+                : $"      {slot.Label} HP {Mathf.CeilToInt(slot.Car.CurrentHp),4}  Crumple {Mathf.RoundToInt(slot.Car.CrumpleFraction * 100f),3}%";
+        }
+        _debugReadout.Text = $"HP {hp,3}   Boost {pct,3}%   {drift}   {boost}{iframes}{dummies}{wrecked}";
     }
 }

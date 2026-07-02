@@ -136,8 +136,9 @@ public class CarControllerTest
     {
         // Regression: a car pinned against a wall is stopped dead the frame it's hit, so the impact
         // burst must come from the attacker's APPROACH speed (snapshotted pre-collision), not a
-        // post-collision read. A hard clean ram should one-shot it — which the slow crush alone
-        // could never do inside this short window, so reaching a wreck proves the burst fired.
+        // post-collision read. A hard clean ram delivers well over the dummy's full HP in one hit —
+        // a damage-based takedown (docs/08 §3) that nothing but the discrete burst could reach
+        // inside this short window.
         var tree = (SceneTree)Engine.GetMainLoop();
         var root = AutoFree(new Node2D())!;
         tree.Root.AddChild(root);
@@ -162,8 +163,8 @@ public class CarControllerTest
 
         await PhysicsFrames(tree, 60);
 
-        AssertBool(dummy.IsWrecked).IsTrue();            // the burst landed (and one-shot the wreck)
-        AssertBool(player.IsWrecked).IsFalse();          // the clean attacker is unscathed
+        AssertBool(dummy.IsWrecked).IsTrue();           // the burst landed — a damage-based takedown
+        AssertBool(player.IsWrecked).IsFalse();         // the clean attacker is unscathed
     }
 
     [TestCase]

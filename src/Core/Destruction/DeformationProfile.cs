@@ -27,6 +27,12 @@ public sealed record DeformationProfile
     /// can never cross the middle.</summary>
     public float MaxCrumpleDepth { get; init; } = 16f;
 
+    /// <summary>Cap (px) on the depth a SINGLE hit can add, independent of the accumulated
+    /// <see cref="MaxCrumpleDepth"/> budget. Lets a wall offer a deep total carve (keep slamming the
+    /// same spot and the pocket keeps growing) while one slam still only bites a modest chunk.
+    /// Unlimited by default — cars are already bounded by their small accumulated caps.</summary>
+    public float MaxHitDepth { get; init; } = float.PositiveInfinity;
+
     /// <summary>How far (px) a <em>flat</em> impactor's dent ramps from full depth to zero past its
     /// flat core — small, for crisp rectangular edges.</summary>
     public float FlatEdgeFalloff { get; init; } = 5f;
@@ -74,12 +80,15 @@ public sealed record DeformationProfile
         SparksBelowHpFraction = 1f,
     };
 
-    /// <summary>Walls/obstacles: they dent where struck but never shed panels, and dents stay shallow
-    /// so a thin wall can't fold through itself. Damage is deformation-only (no HP/wreck).</summary>
+    /// <summary>Walls/obstacles: they dent where struck but never shed panels. One slam bites at
+    /// most <see cref="MaxHitDepth"/>; the accumulated carve budget (<see cref="MaxCrumpleDepth"/>)
+    /// is overridden per wall from its thickness, so repeated slams keep deepening the pocket.
+    /// Damage is deformation-only (no HP/wreck).</summary>
     public static DeformationProfile Wall => new()
     {
         CrumpleScale = 0.03f, // fed by speed-into-wall (px/s), so a smaller scale than the HP-fed cars
-        MaxCrumpleDepth = 14f,
+        MaxCrumpleDepth = 14f, // replaced per wall: CarveBudgetFraction × thickness
+        MaxHitDepth = 14f,     // one slam's bite — the per-hit feel knob
         PanelShedThreshold = float.PositiveInfinity,
         ShedsWhileAlive = false,
         SparksBelowHpFraction = 1f,

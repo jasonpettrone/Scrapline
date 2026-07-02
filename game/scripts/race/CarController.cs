@@ -66,13 +66,11 @@ public partial class CarController : RigidBody2D
     /// blow always looks devastating even if its raw HP figure is modest (docs/09 §4.2).</summary>
     private const float OneShotCrumpleDamage = 80f;
 
-    /// <summary>TEMP (M1): takedowns/wrecks are disabled while we tune their balance (they're currently
-    /// far too easy) and build the split-in-half theatrics. Cars still take damage and deform fully —
-    /// they just never wreck, vanish, or respawn. Flip back on for the takedown pass (docs/08 §3).</summary>
-    private const bool TakedownsEnabled = false;
-
-    /// <summary>HP floor while <see cref="TakedownsEnabled"/> is off, so nothing dies during testing.</summary>
-    private const float TakedownDisabledHpFloor = 1f;
+    /// <summary>M1: the player can't die yet (death/run-flow lands with the M2 GameDirector), so
+    /// player HP floors here. Rivals wreck for real — takedowns are DAMAGE-BASED (docs/08 §3): any
+    /// single hit that zeroes the victim's remaining HP is a takedown, so overkill on a battered
+    /// rival triggers the same spectacle as a monster slam on a fresh one.</summary>
+    private const float PlayerHpFloor = 1f;
 
     private CarStats _stats = CarStats.Default;
     private DamageRules _damageRules = DamageRules.Default;
@@ -95,6 +93,21 @@ public partial class CarController : RigidBody2D
     // Deformation (docs/09). Owns a pure-Core silhouette and renders it onto the Body polygon and the
     // deforming hitbox; profile (sober/exaggerated) is chosen from IsPlayer in _Ready.
     private Deformable? _deformer;
+
+    // Panels shed during the physics flush (a wreck's ShedAllPanels) are queued here and turned into
+    // debris on the next idle frame — spawning bodies inside _IntegrateForces is not allowed.
+    private readonly List<ImpactZone> _pendingShed = new();
+
+    // The killing blow's world direction, captured at wreck time for the split-on-kill spectacle
+    // (spawned via the deferred queue — see ApplyHit).
+    private Vector2 _splitPushWorld;
+
+    /// <summary>How thick (px) a torn-off panel strip reads as debris.</summary>
+    private const float PanelThicknessPx = 7f;
+
+    /// <summary>Extra crumple applied where a panel tore off (docs/09 §4.3: shedding deepens the
+    /// dent). On the HP scale the deformer expects.</summary>
+    private const float PanelTearCrumpleDamage = 12f;
 
     // The body's APPROACH velocity for this step — snapshotted at the top of _PhysicsProcess, before
     // collisions resolve. Read by both this car and the car it hits to measure closing speed
@@ -155,6 +168,14 @@ public partial class CarController : RigidBody2D
 
     /// <summary>Overall body crumple, 0 (pristine) → 1 (fully crushed) — a playtest/debug readout.</summary>
     public float CrumpleFraction => _deformer?.Silhouette.CrumpleAmount ?? 0f;
+
+    /// <summary>Where shed panels go. Injected by the scene; without one, sheds are dropped (tests).</summary>
+    public DebrisPool? DebrisPool { get; set; }
+
+    /// <summary>The danger-tell rule (docs/09 §4.5): the player only sparks when near death (the
+    /// profile's HP threshold — a readable "one more hit" warning); rivals always spark.</summary>
+    public bool SparksSuppressed =>
+        IsPlayer && HpFraction > (_deformer?.Silhouette.Profile.SparksBelowHpFraction ?? 1f);
 
     /// <summary>This car's velocity going into the current step's collisions (read by a rival to
     /// measure closing speed). Public so the other car in a contact can sample it.</summary>
@@ -233,7 +254,83 @@ public partial class CarController : RigidBody2D
 
         // Ease the crumple toward its accumulated target (visual; no-ops once settled). Runs even for
         // an inert dummy so its damage shows. Delta scales with TimeScale, so dents crunch in slow-mo.
-        _deformer?.Step((float)delta);
+        if (_deformer is { } deformer)
+        {
+            deformer.Step((float)delta);
+            ProcessShedPanels(deformer);
+        }
+    }
+
+    /// <summary>Turn panels the silhouette shed (threshold crossings) into flying debris, deepen the
+    /// crumple where each tore off (docs/09 §4.3), and fire the queued split-on-kill. Runs on the
+    /// idle frame, where spawning/configuring bodies is safe.</summary>
+    private void ProcessShedPanels(Deformable deformer)
+    {
+        IReadOnlyList<ImpactZone> shed = deformer.ConsumeNewlyShedPanels();
+        for (int i = 0; i < shed.Count; i++)
+            _pendingShed.Add(shed[i]);
+
+        if (_pendingShed.Count == 0)
+            return;
+        if (DebrisPool is not { } pool)
+        {
+            _pendingShed.Clear(); // nowhere to fling them (tests / headless) — drop
+            return;
+        }
+
+        foreach (ImpactZone zone in _pendingShed)
+        {
+            foreach (Deformable.PanelStrip strip in deformer.BuildPanelStrips(zone, PanelThicknessPx))
+            {
+                Vector2 flingWorld = strip.OutwardLocal.Rotated(GlobalRotation);
+                pool.Spawn(strip.Polygon, (deformer.PanelColor * BaseTint).Darkened(0.15f), GlobalTransform,
+                    flingWorld, LinearVelocity);
+
+                // The tear leaves a deeper wound than the hit alone (docs/09 §4.3).
+                deformer.OnImpact(
+                    new Indenter(Sys(strip.AnchorLocal), Sys(-strip.OutwardLocal), strip.HalfLength * 0.6f, 0.2f),
+                    PanelTearCrumpleDamage, zone);
+            }
+        }
+        _pendingShed.Clear();
+    }
+
+    /// <summary>How gently the split halves drift apart, as a scale on the pool's normal panel
+    /// fling. The split should read as the car breaking in two AT the wreck site — the halves
+    /// separate and settle, not explode across the arena.</summary>
+    private const float SplitDriftScale = 0.35f;
+
+    /// <summary>Tiny spawn gap along each half's drift so the two don't start in solver contact on
+    /// the shared cut line (contact depth there pops them apart harder than the drift).</summary>
+    private const float SplitSeamGapPx = 3f;
+
+    /// <summary>The takedown spectacle (docs/09 §2: enemies split on kill): the deformed hull is cut
+    /// in two across the body's midline and the halves drift apart — one forward, one back, nudged
+    /// along the killing blow. Runs from the deferred queue AFTER <c>RaiseWrecked</c>, so the wreck
+    /// is already frozen (the halves spawn exactly at its final pose) and its collider is already
+    /// off (spawning colliding pieces inside a live body blows them across the arena). Pieces keep
+    /// the car's on-screen colour (polygon colour × the body tint, which normally lives on
+    /// Modulate) and the nose marker rides the front half as a decal — never its own body — so the
+    /// wreck reads as THIS car broken cleanly in two.</summary>
+    private void SpawnSplitHalves()
+    {
+        if (!IsWrecked || _deformer is not { } deformer || DebrisPool is not { } pool)
+            return;
+
+        (Vector2[]? front, Vector2[]? rear) = deformer.BuildSplitHalves();
+        Vector2 forward = Vector2.Right.Rotated(GlobalRotation);
+        Color hull = deformer.PanelColor * BaseTint;
+        Vector2 frontDrift = forward + _splitPushWorld * 0.8f;
+        Vector2 rearDrift = -forward + _splitPushWorld * 0.8f;
+        Polygon2D? nose = GetNodeOrNull<Polygon2D>("Nose");
+
+        if (front is not null)
+            pool.Spawn(front, hull, GlobalTransform, frontDrift, LinearVelocity,
+                SplitDriftScale, clearancePx: SplitSeamGapPx,
+                decal: nose?.Polygon, decalColor: nose is null ? default : nose.Color * BaseTint);
+        if (rear is not null)
+            pool.Spawn(rear, hull, GlobalTransform, rearDrift, LinearVelocity,
+                SplitDriftScale, clearancePx: SplitSeamGapPx);
     }
 
     public override void _PhysicsProcess(double delta)
@@ -300,7 +397,9 @@ public partial class CarController : RigidBody2D
 
             _contacts.Add(collider.GetInstanceId());
 
-            if (collider is not CarController)
+            // Debris is neither a wall (it can't pin a car for the sandwich rule) nor a damage
+            // source — plowing through a shed bumper is free by design (docs/09 §2).
+            if (collider is not CarController and not Debris)
             {
                 Vector2 toWall = state.GetContactColliderPosition(i) - GlobalPosition;
                 if (toWall.LengthSquared() > 0f && _wallDirCount < _wallDirs.Length)
@@ -322,7 +421,7 @@ public partial class CarController : RigidBody2D
                 else
                     EnemyCarImpact(other);    // full physics model
             }
-            else
+            else if (collider is not Debris)
             {
                 Vector2 contactPoint = state.GetContactColliderPosition(i);
                 ApplyWallImpact(contactPoint);             // the car's own self-damage + dent
@@ -543,12 +642,16 @@ public partial class CarController : RigidBody2D
         if (IsWrecked)
             return;
 
-        bool lethal = oneShot && TakedownsEnabled;
+        // Damage-based takedown (docs/08 §3): lethal when this one hit finishes the remaining HP —
+        // a fresh rival needs a monster slam, a battered one dies to overkill. The speed-based clean
+        // one-shot (`oneShot`, DamageRules.OneShotSpeed) stays as an extra instant path. The player
+        // can't die in M1 (death/run-flow is M2): their HP floors instead.
+        bool lethal = !IsPlayer && (oneShot || CurrentHp - damage <= 0f);
         CurrentHp = lethal ? 0f : Mathf.Max(0f, CurrentHp - damage);
-        if (!TakedownsEnabled)
-            CurrentHp = Mathf.Max(CurrentHp, TakedownDisabledHpFloor); // temp: nothing wrecks until takedowns return
+        if (IsPlayer)
+            CurrentHp = Mathf.Max(CurrentHp, PlayerHpFloor);
         _flashTimer = DamageFlashSeconds;
-        bool wreckedNow = TakedownsEnabled && CurrentHp <= 0f;
+        bool wreckedNow = lethal;
 
         // Crumple the struck zone by the damage sustained — high damage, high deformation (docs/09).
         // OnImpact only touches Core data (the mesh refresh happens in _Process), so it's safe here
@@ -562,11 +665,17 @@ public partial class CarController : RigidBody2D
         if (wreckedNow)
         {
             IsWrecked = true;
-            _deformer?.Shatter(); // full destruction (Core data only; debris bodies arrive in Phase 3)
+            _splitPushWorld = indenter is { } killBlow
+                ? new Vector2(killBlow.PushDir.X, killBlow.PushDir.Y).Rotated(GlobalRotation)
+                : Vector2.Zero;
             // Deferred: ApplyHit can run inside _IntegrateForces (a physics query flush). A listener
             // that touches body state — e.g. the scene freezing the wreck — would crash if notified
             // mid-flush ("Can't change this state while flushing queries"). Raise it on the idle frame.
             CallDeferred(MethodName.RaiseWrecked, hitForce);
+            // Queued AFTER RaiseWrecked, so the split spawns once the scene's wreck handling
+            // (SetInert: freeze + hide + collider off) has already run — the halves appear exactly
+            // at the wreck's final pose with nothing live to depenetrate against.
+            CallDeferred(MethodName.SpawnSplitHalves);
         }
     }
 
@@ -607,7 +716,8 @@ public partial class CarController : RigidBody2D
         _approachVelocity = Vector2.Zero;
         _contacts.Clear();
         _contactsPrev.Clear();
-        _deformer?.Repair(); // a respawning rival comes back pristine (docs/09 §6)
+        _pendingShed.Clear();  // panels queued from the wreck must not fling off the fresh car
+        _deformer?.Repair();   // a respawning rival comes back pristine (docs/09 §6)
     }
 
     /// <summary>Park a wrecked car out of play (or bring it back). Inert = frozen, hidden, and —

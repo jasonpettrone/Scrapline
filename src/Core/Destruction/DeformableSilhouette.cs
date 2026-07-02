@@ -26,6 +26,13 @@ public sealed class DeformableSilhouette
     // pulverised panel can't fold through the middle and invert the shape.
     private const float MaxDepthFraction = 0.85f;
 
+    // Fold guard: a vertex's accumulated slide ALONG the surface (tangentially) is capped at this
+    // fraction of its rest distance to the nearer neighbour. Two neighbours sliding toward each
+    // other by 0.45× each still leaves a 0.1× gap, so vertices can never pass one another and the
+    // ring can never self-intersect — which broke both Godot's polygon triangulation (the car's
+    // body mesh vanished) and the collider's convex decomposition under repeated angled hits.
+    private const float TangentSlideFraction = 0.45f;
+
     // Default footprint for the convenience ApplyHit (no impactor geometry): a modest, slightly
     // rounded poke. Used by the crush pin and tests.
     private const float DefaultHalfWidth = 8f;
@@ -34,6 +41,8 @@ public sealed class DeformableSilhouette
     private readonly Vector2[] _rest;          // rest local-space vertices (immutable shape)
     private readonly ImpactZone[] _zones;      // which face each vertex belongs to
     private readonly float[] _maxDepth;        // per-vertex displacement cap (px)
+    private readonly Vector2[] _tangent;       // rest surface direction at each vertex (unit)
+    private readonly float[] _tangentLimit;    // per-vertex cap on accumulated tangential slide (px)
     private readonly Vector2[] _target;        // accumulated target offset per vertex (px)
     private readonly Vector2[] _current;       // eased current offset per vertex (px)
 
@@ -66,6 +75,8 @@ public sealed class DeformableSilhouette
 
         _zones = new ImpactZone[n];
         _maxDepth = new float[n];
+        _tangent = new Vector2[n];
+        _tangentLimit = new float[n];
         _target = new Vector2[n];
         _current = new Vector2[n];
 
@@ -74,6 +85,14 @@ public sealed class DeformableSilhouette
             Vector2 fromCentre = _rest[i] - Centroid;
             _maxDepth[i] = MathF.Min(profile.MaxCrumpleDepth, fromCentre.Length() * MaxDepthFraction);
             _zones[i] = ZoneOfDirection(fromCentre);
+
+            // The rest surface direction and neighbour spacing at this vertex, for the fold guard.
+            Vector2 prev = _rest[(i + n - 1) % n];
+            Vector2 next = _rest[(i + 1) % n];
+            Vector2 along = next - prev;
+            _tangent[i] = along.LengthSquared() > 0f ? Vector2.Normalize(along) : Vector2.Zero;
+            float nearestNeighbour = MathF.Min((_rest[i] - prev).Length(), (next - _rest[i]).Length());
+            _tangentLimit[i] = nearestNeighbour * TangentSlideFraction;
         }
     }
 
@@ -142,6 +161,10 @@ public sealed class DeformableSilhouette
     /// <summary>The current (eased) offset of vertex <paramref name="i"/> from its rest position.</summary>
     public Vector2 Offset(int i) => _current[i];
 
+    /// <summary>The current (eased) deformed position of vertex <paramref name="i"/> in local space —
+    /// the allocation-free counterpart of <see cref="CurrentVertices"/> for per-frame readers.</summary>
+    public Vector2 CurrentVertex(int i) => _rest[i] + _current[i];
+
     /// <summary>Which face vertex <paramref name="i"/> belongs to.</summary>
     public ImpactZone ZoneOf(int i) => _zones[i];
 
@@ -164,7 +187,7 @@ public sealed class DeformableSilhouette
             return;
         }
 
-        float depth = force * Profile.CrumpleScale;
+        float depth = MathF.Min(force * Profile.CrumpleScale, Profile.MaxHitDepth);
         Vector2 tangent = new(-push.Y, push.X);
         float core = MathF.Max(0f, indenter.HalfWidth * (1f - Clamp01(indenter.Sharpness)));
         float reach = MathF.Max(0.001f, Lerp(Profile.FlatEdgeFalloff, Profile.SharpReach, Clamp01(indenter.Sharpness)));
@@ -185,13 +208,76 @@ public sealed class DeformableSilhouette
                 continue;
 
             Vector2 next = _target[i] + push * (depth * shape);
+
+            // Fold guard: cap the accumulated slide along the rest surface so this vertex can never
+            // pass its neighbours (a self-intersecting ring breaks Godot's triangulation/decomposition).
+            float slide = Vector2.Dot(next, _tangent[i]);
+            float limit = _tangentLimit[i];
+            if (slide > limit)
+                next -= _tangent[i] * (slide - limit);
+            else if (slide < -limit)
+                next -= _tangent[i] * (slide + limit);
+
             float len = next.Length();
             if (len > _maxDepth[i])
                 next *= _maxDepth[i] / len; // clamp accumulated depth so it can't fold through centre
             _target[i] = next;
         }
 
+        ResolveCrossings();
         AccrueZone(zone, force);
+    }
+
+    /// <summary>The hard simplicity guarantee. The fold guard prevents the common failure (a vertex
+    /// sliding past its neighbour), but deep dents arriving from TWO faces can still cross near a
+    /// corner. Scan the accumulated target ring for crossing edge pairs and relax the involved
+    /// vertices toward rest until simple — rest itself is simple, so this always terminates. O(n²)
+    /// per pass but only on a hit, never per frame.</summary>
+    private void ResolveCrossings()
+    {
+        const int MaxPasses = 12;
+        const float Relax = 0.75f;
+        int n = _rest.Length;
+
+        for (int pass = 0; pass < MaxPasses; pass++)
+        {
+            bool crossed = false;
+            for (int i = 0; i < n; i++)
+            {
+                Vector2 a1 = _rest[i] + _target[i];
+                Vector2 a2 = _rest[(i + 1) % n] + _target[(i + 1) % n];
+                for (int j = i + 2; j < n; j++)
+                {
+                    if (i == 0 && j == n - 1)
+                        continue; // adjacent through the wrap
+                    Vector2 b1 = _rest[j] + _target[j];
+                    Vector2 b2 = _rest[(j + 1) % n] + _target[(j + 1) % n];
+                    if (!SegmentsCross(a1, a2, b1, b2))
+                        continue;
+
+                    _target[i] *= Relax;
+                    _target[(i + 1) % n] *= Relax;
+                    _target[j] *= Relax;
+                    _target[(j + 1) % n] *= Relax;
+                    crossed = true;
+                    a1 = _rest[i] + _target[i];
+                    a2 = _rest[(i + 1) % n] + _target[(i + 1) % n];
+                }
+            }
+            if (!crossed)
+                return;
+        }
+    }
+
+    private static bool SegmentsCross(Vector2 a, Vector2 b, Vector2 c, Vector2 d)
+    {
+        static float Orient(Vector2 p, Vector2 q, Vector2 r) =>
+            (q.X - p.X) * (r.Y - p.Y) - (q.Y - p.Y) * (r.X - p.X);
+        float o1 = Orient(a, b, c);
+        float o2 = Orient(a, b, d);
+        float o3 = Orient(c, d, a);
+        float o4 = Orient(c, d, b);
+        return o1 * o2 < 0f && o3 * o4 < 0f; // strictly proper crossings only
     }
 
     /// <summary>A generic localized poke when the impactor's geometry isn't known (the crush pin,
@@ -225,6 +311,26 @@ public sealed class DeformableSilhouette
         for (int i = 0; i < _rest.Length; i++)
             outv[i] = _rest[i] + _current[i];
         return outv;
+    }
+
+    /// <summary>The largest remaining distance (px) between any vertex's eased position and its
+    /// accumulated target — how much crunch is still in flight. 0 once the dent has fully settled.
+    /// The Godot layer uses this to stop per-frame work: unlike a delta of <see cref="CrumpleAmount"/>
+    /// (which averages over the whole ring and so shrinks with vertex count, freezing small dents on
+    /// big walls half-eased), this is an absolute per-vertex distance and scales with nothing.</summary>
+    public float MaxResidual
+    {
+        get
+        {
+            float max = 0f;
+            for (int i = 0; i < _current.Length; i++)
+            {
+                float d = (_target[i] - _current[i]).LengthSquared();
+                if (d > max)
+                    max = d;
+            }
+            return MathF.Sqrt(max);
+        }
     }
 
     /// <summary>Overall crumple severity, 0 (pristine) → 1 (every vertex at its cap). Drives VFX

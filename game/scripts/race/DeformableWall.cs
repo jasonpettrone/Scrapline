@@ -19,9 +19,18 @@ namespace Scrapline.Game.Race;
 public partial class DeformableWall : StaticBody2D
 {
     private const float WallVertexSpacing = 55f;   // ~one dent-vertex per this many px of edge
-    private const int MaxWallVertsPerEdge = 40;    // cap so huge boundary walls stay cheap
+    private const int MaxWallVertsPerEdge = 72;    // cap so huge boundary walls stay cheap (the
+                                                   // adaptive hitbox only keeps dented vertices, so
+                                                   // a denser visual ring no longer costs collision)
     private const float WallFlatHalfWidth = 26f;   // a square-on slam caves about a car's width
     private const float WallCornerHalfWidth = 4f;  // a glancing/corner hit pokes a narrow dent
+
+    /// <summary>How much of the wall's thickness repeated slams can carve away (docs/09: keep
+    /// crashing into the same spot and the indent keeps growing) — replaces the old flat 14px cap
+    /// (≈ one slam) with a per-wall, thickness-aware budget. The default 0.45 is safe for walls
+    /// reachable from BOTH sides: two opposing dents (0.45 + 0.45) can never meet and cross the
+    /// ring. Walls only ever hit from one side (the arena boundary) can raise it toward ~0.8.</summary>
+    public float CarveBudgetFraction { get; set; } = 0.45f;
 
     /// <summary>Wall dimensions (px). Set by the builder before the node enters the tree.</summary>
     public Vector2 Size { get; set; } = new(100f, 100f);
@@ -31,11 +40,20 @@ public partial class DeformableWall : StaticBody2D
 
     private Deformable? _deformer;
 
+    /// <summary>The wall's deformer, exposed for the integration tests (dent localization).</summary>
+    public Deformable? Deformer => _deformer;
+
     public override void _Ready()
     {
         float hw = Size.X / 2f, hh = Size.Y / 2f;
+        // Depth budget scales with the wall's thickness: a 50px boundary wall carves ~40px deep over
+        // repeated slams, the central block hundreds — the environment stays carvable all race.
+        var profile = DeformationProfile.Wall with
+        {
+            MaxCrumpleDepth = CarveBudgetFraction * Mathf.Min(Size.X, Size.Y),
+        };
         var silhouette = DeformableSilhouette.BoxWithSpacing(hw, hh, WallVertexSpacing,
-            DeformationProfile.Wall, MaxWallVertsPerEdge);
+            profile, MaxWallVertsPerEdge);
 
         var visual = new Polygon2D { Color = Color };
         AddChild(visual);
@@ -56,11 +74,19 @@ public partial class DeformableWall : StaticBody2D
         if (_deformer is null || magnitude <= 0f)
             return;
 
+        // Pick the struck face by which edge the contact is NEAREST — not by its direction from the
+        // wall's centre. On a long wall (3600×50) almost every contact points along the length, which
+        // used to resolve to the wall's END CAP: the dent appeared hundreds of pixels from the hit.
         float hw = Size.X / 2f, hh = Size.Y / 2f;
         Vector2 local = ToLocal(worldContact);
-        Vector2 dir = local.LengthSquared() > 0f ? local.Normalized() : Vector2.Right;
-        Vector2 faceNormal = FaceNormal(dir);            // outward face the car hit
-        Vector2 contact = EdgePoint(dir, hw, hh);        // snap onto that face
+        float slackX = hw - Mathf.Abs(local.X);          // distance in from the ±X (end) faces
+        float slackY = hh - Mathf.Abs(local.Y);          // distance in from the ±Y (long) faces
+        Vector2 faceNormal = slackX < slackY
+            ? new Vector2(local.X >= 0f ? 1f : -1f, 0f)
+            : new Vector2(0f, local.Y >= 0f ? 1f : -1f); // outward face the car hit
+        Vector2 contact = faceNormal.X != 0f             // snap the contact onto that face
+            ? new Vector2(faceNormal.X * hw, Mathf.Clamp(local.Y, -hh, hh))
+            : new Vector2(Mathf.Clamp(local.X, -hw, hw), faceNormal.Y * hh);
         Vector2 pushDir = -faceNormal;                   // dent drives into the wall
 
         // Square-on hits flatten a wide patch; glancing hits poke a sharp dent. Derive from how
@@ -71,19 +97,6 @@ public partial class DeformableWall : StaticBody2D
         float halfWidth = Mathf.Lerp(WallFlatHalfWidth, WallCornerHalfWidth, sharpness);
 
         _deformer.OnImpact(new Indenter(Sys(contact), Sys(pushDir), halfWidth, sharpness), magnitude, ImpactZone.Front);
-    }
-
-    private static Vector2 FaceNormal(Vector2 dir) =>
-        Mathf.Abs(dir.X) >= Mathf.Abs(dir.Y)
-            ? new Vector2(Mathf.Sign(dir.X), 0f)
-            : new Vector2(0f, Mathf.Sign(dir.Y));
-
-    private static Vector2 EdgePoint(Vector2 dir, float halfWidth, float halfHeight)
-    {
-        float ax = Mathf.Abs(dir.X), ay = Mathf.Abs(dir.Y);
-        float tx = ax > 1e-5f ? halfWidth / ax : float.MaxValue;
-        float ty = ay > 1e-5f ? halfHeight / ay : float.MaxValue;
-        return dir * Mathf.Min(tx, ty);
     }
 
     private static SysVec2 Sys(Vector2 v) => new(v.X, v.Y);
