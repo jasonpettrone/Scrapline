@@ -9,8 +9,9 @@ namespace Scrapline.Core.Combat;
 /// relative speed at which the two bodies came together — captured from each car's own velocity
 /// the instant a contact begins. (We do NOT read the physics solver's per-contact impulse/normal:
 /// those are unreliable on the first frame of a fast contact, which made damage inconsistent.)
-/// Impacts are discrete (one per contact), so nothing grinds HP frame-after-frame; a steady
-/// crush against a wall is the one continuous case, handled by <see cref="CrushDamagePerSecond"/>.
+/// Impacts are discrete (one per contact), so nothing grinds HP frame-after-frame; a car pinned
+/// against a wall just takes a harder discrete hit (<see cref="WallBackedMultiplier"/>), not a
+/// continuous grind.
 ///
 /// These numbers are first-guess starting points — Task 2 is a feel pass, so expect to move them
 /// in playtesting. The model they feed is exhaustively unit-tested; the *values* are not.
@@ -32,8 +33,10 @@ public sealed record DamageRules
     public float MaxMassFactor { get; init; } = 2.0f;
 
     /// <summary>Attacker speed (px/s) at or above which a <em>clean</em> hit one-shot wrecks the
-    /// victim regardless of HP (the takedown payoff — docs/08 §3).</summary>
-    public float OneShotSpeed { get; init; } = 750f;
+    /// victim regardless of HP (the takedown payoff — docs/08 §3). Temporarily raised above boost
+    /// top speed for M1 destruction testing (so the dummy doesn't vanish mid-test); lower toward
+    /// ~700 when tuning the takedown feel.</summary>
+    public float OneShotSpeed { get; init; } = 1000f;
 
     // ── Car ↔ wall ──
     /// <summary>Speed into a wall below which the contact is a free scrape/lean (no self-damage),
@@ -44,11 +47,13 @@ public sealed record DamageRules
     /// <summary>HP per px/s of speed into a wall above <see cref="WallMinSpeed"/>.</summary>
     public float WallDamagePerSpeed { get; init; } = 0.05f;
 
-    // ── Crush (the "smush") ──
-    /// <summary>Continuous HP/sec dealt to a car pinned between another car and a wall — the only
-    /// non-discrete damage. It's how momentum-smushing a rival into a wall stays lethal even once
-    /// everything has stopped moving (so closing-speed impacts alone wouldn't register).</summary>
-    public float CrushDamagePerSecond { get; init; } = 35f;
+    // ── Wall-backed (the physical "sandwich") ──
+    /// <summary>Damage multiplier when the victim is pinned against a wall on the side away from the
+    /// attacker: it can't recede, so the impact resolves harder (its momentum has nowhere to go). This
+    /// replaces the old time-based "smush" with a physical, discrete amplification — slamming a rival
+    /// into a wall genuinely hurts more, but only on the impact itself (no free grind on a stopped pin).
+    /// The attacker still pays nothing on a clean hit (docs/09).</summary>
+    public float WallBackedMultiplier { get; init; } = 1.8f;
 
     // ── Player (forgiving) ──
     // The player's car uses a deliberately different, kinder model (docs/08 §2): i-frames after

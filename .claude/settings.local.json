@@ -1,7 +1,17 @@
 {
   "permissions": {
     "allow": [
-      "Bash(git init *)"
+      "Bash(git init *)",
+      "Bash(dotnet test *)",
+      "Bash(dotnet build *)",
+      "Bash(command -v godot godot4 Godot Godot_v4)",
+      "Read(//c/Program Files/**)",
+      "Bash(where.exe godot *)",
+      "Bash(timeout 12 godot --headless)",
+      "Bash(godot --headless --path game --build-solutions --quit)",
+      "Bash(godot --headless --path game --quit-after 120)",
+      "Read(//c/Users/jason/bin/**)",
+      "Bash(export GODOT_BIN=\"C:/Program Files/Godot_v4.7-stable_mono_win64/Godot_v4.7-stable_mono_win64/Godot_v4.7-stable_mono_win64.exe\")"
     ]
   }
 }

@@ -32,25 +32,31 @@ public static class DamageModel
         float closingSpeed,
         ImpactZone selfZone, ImpactZone otherZone,
         float selfSpeed, float otherSpeed,
-        float selfMass, float otherMass)
+        float selfMass, float otherMass,
+        bool victimWallBacked = false)
     {
         if (closingSpeed < rules.MinImpactSpeed)
             return (0f, false);
 
         float baseDamage = rules.DamagePerSpeed * (closingSpeed - rules.MinImpactSpeed);
 
-        // I land a clean hit (my front into their side/rear while I'm faster) → I pay nothing.
+        // I land a clean hit (my front into their side/rear while I'm faster) → I pay nothing. The
+        // wall backing the OTHER car never makes me, the clean attacker, take damage.
         if (IsCleanHit(selfZone, otherZone, selfSpeed, otherSpeed))
             return (0f, false);
+
+        // Pinned against a wall on my far side → I can't recede, so the hit resolves harder (the
+        // physical "sandwich"). Only applies to damage I actually take.
+        float wallFactor = victimWallBacked ? rules.WallBackedMultiplier : 1f;
 
         // I suffer a clean hit (their front into my side/rear while they're faster) → amplified,
         // and wrecked outright if they're travelling hard enough.
         if (IsCleanHit(otherZone, selfZone, otherSpeed, selfSpeed))
-            return (baseDamage * rules.CleanHitMultiplier * MassFactor(rules, selfMass, otherMass),
+            return (baseDamage * rules.CleanHitMultiplier * MassFactor(rules, selfMass, otherMass) * wallFactor,
                     otherSpeed >= rules.OneShotSpeed);
 
         // Botched / glancing / head-on → I eat the base trade, scaled by my mass.
-        return (baseDamage * MassFactor(rules, selfMass, otherMass), false);
+        return (baseDamage * MassFactor(rules, selfMass, otherMass) * wallFactor, false);
     }
 
     /// <summary>Self-damage from driving into a wall at <paramref name="approachSpeed"/> (px/s,
@@ -90,12 +96,6 @@ public static class DamageModel
         float t = Severity(approachSpeed, 0f, rules.PlayerWallReferenceSpeed);
         return rules.PlayerWallMaxDamage * t;
     }
-
-    /// <summary>Continuous crush damage for a car pinned between a rival and a wall, for a slice of
-    /// time <paramref name="dt"/> (seconds). This is the "smush": once a momentum-slam has stopped,
-    /// the sustained pin keeps dealing damage that closing-speed impacts no longer would.</summary>
-    public static float ResolveCrushDamage(DamageRules rules, float dt) =>
-        rules.CrushDamagePerSecond * dt;
 
     /// <summary>
     /// Whether a rival is the aggressor against the player — the only car-to-car case in which the

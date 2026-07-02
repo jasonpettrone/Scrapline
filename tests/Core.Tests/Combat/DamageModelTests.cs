@@ -17,7 +17,7 @@ public class DamageModelTests
         OneShotSpeed = 1000f,
         WallMinSpeed = 50f,
         WallDamagePerSpeed = 0.1f,
-        CrushDamagePerSecond = 30f,
+        WallBackedMultiplier = 2f,
         PlayerHitMaxSpeed = 600f,           // player-hit band: 100 → min, 600 → max
         PlayerWallMinSpeed = 50f,
         PlayerWallReferenceSpeed = 500f,    // player wall: 0 → 0, 500+ → cap
@@ -241,11 +241,33 @@ public class DamageModelTests
         Assert.Equal(expected, DamageModel.ResolvePlayerWallDamage(Rules, approach), 4);
     }
 
-    // ── Crush ───────────────────────────────────────────────────────────────────
+    // ── Wall-backed (the physical "sandwich") ─────────────────────────────────────
 
     [Fact]
-    public void Crush_damage_accrues_with_time()
+    public void Being_pinned_against_a_wall_amplifies_the_hit_i_take()
     {
-        Assert.Equal(30f * 0.5f, DamageModel.ResolveCrushDamage(Rules, 0.5f), 4);
+        // Their front into my side while they're faster, but now I'm pinned against a wall behind me.
+        var (open, _) = DamageModel.ResolveCarDamage(
+            Rules, closingSpeed: 600f,
+            selfZone: ImpactZone.Side, otherZone: ImpactZone.Front,
+            selfSpeed: 100f, otherSpeed: 600f, selfMass: 1f, otherMass: 1f, victimWallBacked: false);
+        var (pinned, _) = DamageModel.ResolveCarDamage(
+            Rules, closingSpeed: 600f,
+            selfZone: ImpactZone.Side, otherZone: ImpactZone.Front,
+            selfSpeed: 100f, otherSpeed: 600f, selfMass: 1f, otherMass: 1f, victimWallBacked: true);
+
+        Assert.Equal(open * 2f, pinned, 4); // WallBackedMultiplier = 2
+    }
+
+    [Fact]
+    public void Pinning_the_victim_never_makes_the_clean_attacker_pay()
+    {
+        // I'm the clean attacker; a wall behind THEM doesn't suddenly cost me HP.
+        var (damage, _) = DamageModel.ResolveCarDamage(
+            Rules, closingSpeed: 600f,
+            selfZone: ImpactZone.Front, otherZone: ImpactZone.Side,
+            selfSpeed: 600f, otherSpeed: 100f, selfMass: 1f, otherMass: 1f, victimWallBacked: true);
+
+        Assert.Equal(0f, damage);
     }
 }

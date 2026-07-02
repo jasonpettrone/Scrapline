@@ -109,42 +109,22 @@ public partial class RaceScene : Node2D
             },
         });
 
-        var walls = new StaticBody2D { Name = "Walls" };
-        AddChild(walls);
-
         var wallColor = new Color(0.45f, 0.47f, 0.55f);
         float w = ArenaWidth, h = ArenaHeight, t = WallThickness;
 
-        // Four boundary walls.
-        AddWall(walls, new Vector2(w / 2, t / 2), new Vector2(w, t), wallColor);           // top
-        AddWall(walls, new Vector2(w / 2, h - t / 2), new Vector2(w, t), wallColor);       // bottom
-        AddWall(walls, new Vector2(t / 2, h / 2), new Vector2(t, h), wallColor);           // left
-        AddWall(walls, new Vector2(w - t / 2, h / 2), new Vector2(t, h), wallColor);       // right
+        // Four boundary walls — each its own deformable body so cars carve into them (docs/09).
+        AddWall(new Vector2(w / 2, t / 2), new Vector2(w, t), wallColor);           // top
+        AddWall(new Vector2(w / 2, h - t / 2), new Vector2(w, t), wallColor);       // bottom
+        AddWall(new Vector2(t / 2, h / 2), new Vector2(t, h), wallColor);           // left
+        AddWall(new Vector2(w - t / 2, h / 2), new Vector2(t, h), wallColor);       // right
 
         // Central block — turns the arena into a loop you drive around.
-        AddWall(walls, new Vector2(w / 2, h / 2), CentralBlockSize,
-            new Color(0.30f, 0.32f, 0.40f));
+        AddWall(new Vector2(w / 2, h / 2), CentralBlockSize, new Color(0.30f, 0.32f, 0.40f));
     }
 
-    private void AddWall(StaticBody2D parent, Vector2 center, Vector2 size, Color color)
+    private void AddWall(Vector2 center, Vector2 size, Color color)
     {
-        var collider = new CollisionShape2D
-        {
-            Position = center,
-            Shape = new RectangleShape2D { Size = size },
-        };
-        parent.AddChild(collider);
-
-        parent.AddChild(new Polygon2D
-        {
-            Position = center,
-            Color = color,
-            Polygon = new[]
-            {
-                new Vector2(-size.X / 2, -size.Y / 2), new Vector2(size.X / 2, -size.Y / 2),
-                new Vector2(size.X / 2, size.Y / 2), new Vector2(-size.X / 2, size.Y / 2),
-            },
-        });
+        AddChild(new DeformableWall { Position = center, Size = size, Color = color });
     }
 
     /// <summary>
@@ -200,10 +180,14 @@ public partial class RaceScene : Node2D
     /// you can hit its side/rear (clean) or circle to its front (botched). It still takes damage
     /// and gets shoved like any RigidBody2D.
     /// </summary>
+    /// <summary>Beefed-up HP on the practice dummy so it survives several hits before wrecking —
+    /// purely a destruction-testing convenience (real enemy HP comes from RaceConfig). Tunable.</summary>
+    private const float DummyTestHp = 220f;
+
     private void SpawnPracticeDummy()
     {
         var dummy = CarScene.Instantiate<CarController>();
-        dummy.Configure(_config.PlayerCar);
+        dummy.Configure(_config.PlayerCar with { MaxHp = DummyTestHp });
         dummy.InputEnabled = false;
         dummy.BaseTint = new Color(0.5f, 0.65f, 1f); // distinct from the red player
         dummy.Position = DummyStart;
@@ -338,7 +322,9 @@ public partial class RaceScene : Node2D
         string boost = _car.IsLaunching ? "LAUNCH" : _car.IsBoosting ? "BOOST" : "—";
         string iframes = _car.IsInvulnerable ? "  [I-FRAMES]" : string.Empty;
         string wrecked = _car.IsWrecked ? "  ** WRECKED **" : string.Empty;
-        string dummyHp = _dummy is null ? string.Empty : $"      Dummy HP {Mathf.CeilToInt(_dummy.CurrentHp),3}";
+        string dummyHp = _dummy is null
+            ? string.Empty
+            : $"      Dummy HP {Mathf.CeilToInt(_dummy.CurrentHp),3}  Crumple {Mathf.RoundToInt(_dummy.CrumpleFraction * 100f),3}%";
         _debugReadout.Text = $"HP {hp,3}   Boost {pct,3}%   {drift}   {boost}{iframes}{dummyHp}{wrecked}";
     }
 }
